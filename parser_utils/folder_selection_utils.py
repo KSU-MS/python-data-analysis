@@ -5,7 +5,6 @@ import tkinter as tk
 from tkinter import filedialog
 import logging
 import shutil
-import parser_utils.parser_logger as parser_logger
 
 def select_folder_and_get_path():
     root = tk.Tk()
@@ -20,7 +19,20 @@ def select_folder_and_get_path():
     else:
         logging.warning("No folder selected")
         return None
+    
+def select_file_and_get_path():
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
 
+    file_path = filedialog.askopenfile()
+    
+    if file_path:
+        print(f"Selected file path: {file_path}")
+        return file_path
+    else:
+        print("No file selected")
+        return None
+    
 def select_folder_and_get_path_dbc():
     root = tk.Tk()
     root.withdraw()  # Hide the main window

@@ -1,7 +1,7 @@
 import requests
 import os
 import sys
-import parser_utils.parser_logger as parser_logger,logging
+import logging
 
 repo_owner = "KSU-MS"
 repo_name = "ksu-ms-dbc"
