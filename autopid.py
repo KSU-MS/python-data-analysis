@@ -58,7 +58,8 @@ class Autopid:
             self.last_step = systime
             error = self.setpoint_var - self.input_var
             self.integral += (error + self.previous_error) / 2 * dT / 1000.0
-            self.integral = self.clamp(self.integral,self.output_min/self.Ki,self.output_max/self.Ki)
+            if self.Ki > 0:
+                self.integral = self.clamp(self.integral,self.output_min/self.Ki,self.output_max/self.Ki)
             d_error = (error - self.previous_error) / dT / 1000.0
             self.previous_error = error
             print(f"error: {error} integral: {self.integral} d_error: {d_error}")
