@@ -49,7 +49,7 @@ def vel_at_tire(v, omega, beta, x, y):
     return v_v
 
 class Tire:
-    def __init__(self, data_arr=H_R20_18X6_7,scaling_factor:float = 0.6) -> None:
+    def __init__(self, data_arr=H_R20_18X6_7,scaling_factor:float = 0.5) -> None:
         self.set_tire(data_arr)
         self.scaling_factor=scaling_factor
         
