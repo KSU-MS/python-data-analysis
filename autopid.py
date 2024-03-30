@@ -62,7 +62,7 @@ class Autopid:
                 self.integral = self.clamp(self.integral,self.output_min/self.Ki,self.output_max/self.Ki)
             d_error = (error - self.previous_error) / dT / 1000.0
             self.previous_error = error
-            print(f"error: {error} integral: {self.integral} d_error: {d_error}")
+            # print(f"error: {error} integral: {self.integral} d_error: {d_error}")
             pid = (self.Kp * error) + (self.Ki * self.integral) + (self.Kd * d_error)
             if pid < self.output_min:
                 pid = self.output_min
@@ -70,7 +70,7 @@ class Autopid:
                 pid = self.output_max
             else:
                 pid = pid
-            print(f"input: {input} error: {error} pid: {pid}")
+            # print(f"input: {input} error: {error} pid: {pid}")
             self.output_var = pid
             return pid
 
