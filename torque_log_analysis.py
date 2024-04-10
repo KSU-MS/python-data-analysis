@@ -370,12 +370,12 @@ def main(pick_folder=True, crawl_paths=False):
                             outfolder_set = True
                         export_filename = f"kt{slope:.2f}_{file_friendly_timestamp}_{file_friendly_filename}"
                         export_filename += "_run_"+str(index) if len(runs_dfs) > 1 else ""
-                        plt.close()
+                        # plt.close()
                         plt.plot(run_data.index,run_data['D2_Motor_Speed'],marker='.')
                         plt.plot(run_data.index,run_data['D1_Commanded_Torque'],marker='.')
                         plt.title(title_str)
-                        # plt.show()
-                        run_data.to_csv(f"{file_friendly_filename}_run_{(index)}.csv")
+                        plt.show()
+                        # run_data.to_csv(f"{file_friendly_filename}_run_{(index)}.csv")
                         # plt.savefig(os.path.join(outfolder, export_filename+".png"))
                         # plt.close()
                         # run_data.to_csv(os.path.join(
