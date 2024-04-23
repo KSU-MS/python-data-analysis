@@ -5,16 +5,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
 import datetime
-from parser_utils.folder_selection_utils import select_file_and_get_path
 from plot_slider import Player
 import time
 # set start and ends for trimming the DF
 # trim point where no change or bad values, etc.
-DF_TRIM_START=20000
-DF_TRIM_END=40000
-import_start=time.perf_counter()
+# you have to manually inspect the csv to see the row coutn for these
+DF_TRIM_START=0
+DF_TRIM_END=255416
  # select the file with 
-filename='temps_real_newcal_interpolated'
+filename=input("filename you want to view")
+import_start=time.perf_counter()
 new_df=pd.read_csv(filename+'.csv')
 
 import_end = time.perf_counter()
