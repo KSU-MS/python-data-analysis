@@ -19,6 +19,19 @@ jobs:
       - name: Notebook runs end to end
         run: nix develop -c jupyter nbconvert --to notebook --execute accel_sim.ipynb --output-dir "$RUNNER_TEMP"
 
+      # drag race GIF + plots as an artifact; tables and charts on the run's summary page
+      - name: Sim report
+        run: |
+          nix develop -c python -m accel.report --out report
+          cat report/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sim report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accel-report
+          path: report/
+
   # the non-Nix setup from the README: plain uv against the same uv.lock
   uv:
     runs-on: ubuntu-latest

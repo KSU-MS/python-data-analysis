@@ -176,6 +176,11 @@ tire force and load) with speed / accel / slip / torque / TC / learned mu plots 
 `--save runs.rrd` writes the recording instead; open it later with `rerun runs.rrd`. From code,
 `accel.viz.show_runs({"name": result, ...}, car)`.
 
+`python -m accel.report --out report/` runs the headline sims and writes a drag race GIF
+(rear wheels colored by slip), launch / final drive / robustness / controller-vs-truth /
+system ID plots and a `summary.md`. CI runs it on every push: the tables and charts are on
+the run's summary page, and the GIF and plots are in the `accel-report` artifact.
+
 The Rerun viewer sends anonymous usage stats by default (features used, not your data);
 `rerun analytics disable` turns that off.
 
