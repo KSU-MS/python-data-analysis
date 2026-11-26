@@ -35,3 +35,15 @@ pytest tests                                 # physics/TC sanity checks
 - `sim.py`: `simulate` (wheel spin dynamics) and `quasi_static` (ideal-TC bound, the joe-accel model).
 - `compare.py`: reference data (OptimumLap run, KS5e launch logs) and matching sim setups;
   the validation plots are at the bottom of `accel_sim.ipynb`.
+
+## VCU controller (sim + car)
+
+`controller/` is the launch/traction controller as firmware-style C++ (no heap, no Arduino, time passed
+in, C ABI in `vcu_control.h`). The sim builds it with `make -C controller` and runs it through
+`accel/firmware.py`, feeding it modeled sensors: 19-tooth wheel speed edges, motor rpm and VectorNav
+frames at CAN rates with latency and noise. The same sources are meant to compile into the VCU.
+
+- `accel/firmware.py`: `FirmwareController` (pass as `simulate(controller=...)`), input recording and
+  `replay()` for running the controller on logged inputs.
+- `accel/uncertainty.py`: Monte Carlo where the simulated car's coefficients are drawn from ranges while
+  controllers keep their nominal beliefs.

@@ -3,3 +3,4 @@
 .direnv/
 __pycache__/
 .ipynb_checkpoints/
+controller/build/

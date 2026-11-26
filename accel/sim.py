@@ -34,6 +34,7 @@ LENGTH = 75.0    # m, start line to finish line
 class Result:
     df: pd.DataFrame
     label: str = ""
+    controller_log: pd.DataFrame | None = None
 
     @property
     def accel_time(self) -> float:
@@ -81,14 +82,17 @@ def _powertrain_torque(car, motor, pack, t_cmd, omega_m, bus_v):
 
 def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "cosmx600v",
              tire=None, tc: SlipTC | None = None, *, dt: float = 2e-4, t_max: float = 8.0,
-             ramp_time: float = 0.1, torque_request=None, relaxation_length: float = 0.15,
-             slip_speed_floor: float = 1.0, label: str = "") -> Result:
+             ramp_time: float = 0.1, torque_request=None, controller=None,
+             relaxation_length: float = 0.15, slip_speed_floor: float = 1.0,
+             label: str = "") -> Result:
     """Run one accel event.
 
     ramp_time: driver torque request ramps 0 -> peak over this long (KS5e drivers
         reached full pedal in 0.06-0.1 s).
     torque_request: optional f(t, v) -> Nm replacing the ramp, e.g. a launch map
         from accel.launch. Still capped by the motor, pack, and TC.
+    controller: e.g. accel.firmware.FirmwareController; replaces `tc`. Runs the VCU
+        code on modeled sensors, its log ends up in Result.controller_log.
     slip_speed_floor: below this speed (m/s) the measured slip fed to TC uses this
         as the denominator, like a real TC does to avoid dividing by ~0.
     """
@@ -99,6 +103,8 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     request = torque_request or _ramp(motor.peak_torque, ramp_time)
     if tc is not None:
         tc.reset()
+    if controller is not None:
+        controller.reset(car, motor)
 
     r, gr, m = car.tire_radius, car.final_drive, car.mass
     eta = car.driveline_eff
@@ -107,7 +113,7 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     sigma = relaxation_length
     stop_x = STAGE + LENGTH + 0.5
 
-    t = x = v = omega = kappa = a_filt = t_lagged = 0.0
+    t = x = v = omega = kappa = a_filt = t_lagged = accel = 0.0
     bus_v = pack.v_oc
     rows = []
     append = rows.append
@@ -119,11 +125,16 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
 
         slip = (omega * r - v) / max(v, slip_speed_floor)
         t_req = min(request(t, v), motor.peak_torque)
-        scale = tc.update(t, slip) if tc is not None else 1.0
-        if car.torque_tau > 0:   # inverter torque response
-            t_lagged += dt * (t_req * scale - t_lagged) / car.torque_tau
+        if controller is not None:
+            t_cmd = controller(t, dt, v, omega, accel, t_req)
+            scale = t_cmd / t_req if t_req > 0 else 1.0
         else:
-            t_lagged = t_req * scale
+            scale = tc.update(t, slip) if tc is not None else 1.0
+            t_cmd = t_req * scale
+        if car.torque_tau > 0:   # inverter torque response
+            t_lagged += dt * (t_cmd - t_lagged) / car.torque_tau
+        else:
+            t_lagged = t_cmd
         omega_m = omega * gr
         torque, bus_v, current = _powertrain_torque(car, motor, pack, t_lagged, omega_m, bus_v)
 
@@ -151,7 +162,10 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     df = pd.DataFrame(rows, columns=[
         "t", "x", "v", "a", "wheel_speed", "slip", "kappa", "fx", "fz_rear", "fz_front",
         "motor_torque", "torque_request", "tc_scale", "motor_rpm", "bus_v", "bus_i", "drag"])
-    return Result(df, label or ("TC" if tc else "no TC"))
+    res = Result(df, label or ("TC" if tc else f"VCU {controller.mode}" if controller else "no TC"))
+    if controller is not None:
+        res.controller_log = controller.log_frame()
+    return res
 
 
 def quasi_static(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "cosmx600v",
