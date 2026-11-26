@@ -47,3 +47,12 @@ frames at CAN rates with latency and noise. The same sources are meant to compil
   `replay()` for running the controller on logged inputs.
 - `accel/uncertainty.py`: Monte Carlo where the simulated car's coefficients are drawn from ranges while
   controllers keep their nominal beliefs.
+- Calibration: the controller learns tire radii (front sensors vs VectorNav, rear motor vs ground speed
+  while coasting), VectorNav accel bias (while staged) and grip; persist `vcu_learned_t` across runs.
+  `accel.firmware.warmup()` simulates the calibration drive.
+- Logging: `vcu_log_record_t` (packed binary, `vcu_control.h`) is what the car writes; `write_log` /
+  `read_log` / `replay` in `accel/firmware.py`.
+- `accel/sysid.py`: fits grip, mass, tire radius, rear inertia and tire relaxation from a log and narrows
+  `uncertainty.RANGES`.
+- `make -C controller teensy` (in `nix develop .#firmware`) cross-compiles the controller for the
+  Teensy 4.1. CI (`.github/workflows/ci.yml`) runs the tests, the notebook and that cross-compile.

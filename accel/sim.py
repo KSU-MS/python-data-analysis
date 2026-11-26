@@ -113,7 +113,7 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     sigma = relaxation_length
     stop_x = STAGE + LENGTH + 0.5
 
-    t = x = v = omega = kappa = a_filt = t_lagged = accel = 0.0
+    t = x = v = omega = kappa = a_filt = t_lagged = accel = torque = 0.0
     bus_v = pack.v_oc
     rows = []
     append = rows.append
@@ -126,7 +126,7 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
         slip = (omega * r - v) / max(v, slip_speed_floor)
         t_req = min(request(t, v), motor.peak_torque)
         if controller is not None:
-            t_cmd = controller(t, dt, v, omega, accel, t_req)
+            t_cmd = controller(t, dt, v, omega, accel, torque, t_req)
             scale = t_cmd / t_req if t_req > 0 else 1.0
         else:
             scale = tc.update(t, slip) if tc is not None else 1.0

@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      # builds controller/ natively and runs it in the loop with the sim
+      - name: Sim and controller tests
+        run: nix develop -c pytest -q tests
+
+      - name: Notebook runs end to end
+        run: nix develop -c jupyter nbconvert --to notebook --execute accel_sim.ipynb --output-dir "$RUNNER_TEMP"
+
+  controller-teensy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      # same controller sources, cross-compiled for the VCU's Cortex-M7 with
+      # -Werror -Wdouble-promotion (single-precision FPU)
+      - name: Cross-compile controller for Teensy 4.1
+        run: nix develop .#firmware -c make -C controller teensy

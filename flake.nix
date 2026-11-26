@@ -44,6 +44,11 @@
               fi
             '';
           };
+          # ARM cross toolchain for `make -C controller teensy` (~1 GB, so kept out
+          # of the default shell)
+          firmware = pkgs.mkShell {
+            packages = [ pkgs.gcc-arm-embedded pkgs.gnumake ];
+          };
         });
     };
 }

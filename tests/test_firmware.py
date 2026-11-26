@@ -1,14 +1,17 @@
 """The C++ VCU controller (controller/), run through accel.firmware."""
 import ctypes
+import dataclasses
 import math
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from accel import Car, MotorMap, quasi_static, simulate
+from accel import Car, MotorMap, PacejkaTire, quasi_static, simulate
 from accel.firmware import (FirmwareController, Inputs, Outputs, Sensors, load_library,
-                            replay)
+                            read_log, replay, warmup, write_log)
+from accel.sysid import fit_plant
+from accel.uncertainty import RANGES
 
 
 @pytest.fixture(scope="module")
@@ -21,7 +24,7 @@ def _controller(mode="passthrough", **overrides):
     lib = load_library()
     state = ctypes.create_string_buffer(lib.vcu_state_size())
     cfg = fc.config(MotorMap("228HV"))
-    lib.vcu_init(state, ctypes.byref(cfg), 0)
+    lib.vcu_init(state, ctypes.byref(cfg), None, 0)
     return lib, state
 
 
@@ -75,5 +78,54 @@ def test_closed_loop_with_real_sensors(motor, mode):
 def test_replay_reproduces_outputs_exactly(motor):
     fc = FirmwareController(mode="mu_adaptive", sensors=Sensors(seed=3))
     r = simulate(Car(), motor, controller=fc)
-    again = replay(fc.input_frame(), fc.config(motor))
+    again = replay(fc.input_frame(), fc.config(motor), t_offset=fc.sensors.staged_time)
     pd.testing.assert_frame_equal(again, r.controller_log, check_exact=True)
+
+
+def test_binary_log_round_trip(motor, tmp_path):
+    fc = FirmwareController(mode="slip_pi")
+    r = simulate(Car(), motor, controller=fc)
+    write_log(tmp_path / "run.vcu", fc.records())
+    inputs, logged = read_log(tmp_path / "run.vcu")
+    pd.testing.assert_frame_equal(inputs, fc.input_frame(), check_dtype=False, check_exact=True)
+    # the log alone is enough to reproduce what the controller did
+    again = replay(inputs, fc.config(motor), t_offset=fc.sensors.staged_time)
+    np.testing.assert_array_equal(again["torque_cmd"].to_numpy(np.float32),
+                                  logged["torque_cmd_nm"].to_numpy())
+    np.testing.assert_array_equal(again["torque_cmd"], r.controller_log["torque_cmd"])
+
+
+def test_warmup_calibrates_radius_and_bias(motor):
+    true = dataclasses.replace(Car(), tire_radius=Car().tire_radius * 0.98)
+    learned = warmup(true, FirmwareController(sensors=Sensors(vn_accel_bias=0.15)), motor)
+    assert learned["r_front"] == pytest.approx(true.tire_radius, rel=0.003)
+    assert learned["r_rear"] == pytest.approx(true.tire_radius, rel=0.003)
+    assert learned["accel_bias"] == pytest.approx(0.15, abs=0.03)
+
+
+def test_mu_learning_carries_between_runs(motor):
+    car, tire = Car(), PacejkaTire(scale=0.6 * 0.85)
+    ideal = quasi_static(car, motor, tire=tire).accel_time
+    first = FirmwareController(mode="mu_adaptive")
+    simulate(car, motor, tire=tire, controller=first)
+    assert first.learned["mu"] < 1.2                       # learned the low grip
+    second = FirmwareController(mode="mu_adaptive", learned=first.learned)
+    r = simulate(car, motor, tire=tire, controller=second)
+    assert r.accel_time == pytest.approx(ideal, rel=0.015)
+
+
+def test_sysid_recovers_plant_from_log(motor):
+    nominal = Car()
+    true = dataclasses.replace(nominal, mass=nominal.mass * 1.04,
+                               tire_radius=nominal.tire_radius * 0.985)
+    fc = FirmwareController(mode="slip_pi", sensors=Sensors(vn_accel_bias=0.1))
+    simulate(true, motor, tire=PacejkaTire(scale=0.6 * 0.9), relaxation_length=0.2,
+             controller=fc)
+    fit = fit_plant(fc.input_frame(), nominal, motor)
+    truth = {"grip": 0.9, "mass": 1.04, "tire_radius": 0.985, "relaxation_length": 0.2}
+    for k, v in truth.items():
+        assert fit.params[k] == pytest.approx(v, abs=2 * fit.std[k]), k
+        lo, hi = fit.ranges(RANGES)[k]
+        assert lo <= v <= hi, k
+    assert fit.ranges(RANGES)["grip"][1] - fit.ranges(RANGES)["grip"][0] < 0.5 * (
+        RANGES["grip"][1] - RANGES["grip"][0])
