@@ -23,6 +23,7 @@ import pandas as pd
 from .control import SlipTC
 from .params import G, Car
 from .powertrain import MotorMap, Pack
+from .tire import default_tire
 
 RPM_PER_RADS = 60 / (2 * math.pi)
 STAGE = 0.3      # m, car is staged this far behind the start line
@@ -80,20 +81,22 @@ def _powertrain_torque(car, motor, pack, t_cmd, omega_m, bus_v):
 
 def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "cosmx600v",
              tire=None, tc: SlipTC | None = None, *, dt: float = 2e-4, t_max: float = 8.0,
-             ramp_time: float = 0.1, relaxation_length: float = 0.15,
+             ramp_time: float = 0.1, torque_request=None, relaxation_length: float = 0.15,
              slip_speed_floor: float = 1.0, label: str = "") -> Result:
     """Run one accel event.
 
-    ramp_time: driver torque request ramps 0 -> peak over this long.
+    ramp_time: driver torque request ramps 0 -> peak over this long (KS5e drivers
+        reached full pedal in 0.06-0.1 s).
+    torque_request: optional f(t, v) -> Nm replacing the ramp, e.g. a launch map
+        from accel.launch. Still capped by the motor, pack, and TC.
     slip_speed_floor: below this speed (m/s) the measured slip fed to TC uses this
         as the denominator, like a real TC does to avoid dividing by ~0.
     """
-    from .tire import CurveTire
-
     car = car or Car()
     motor = MotorMap(motor) if isinstance(motor, str) else motor
     pack = Pack(_pack_by_name(pack)) if isinstance(pack, str) else pack
-    tire = tire or CurveTire()
+    tire = tire or default_tire()
+    request = torque_request or _ramp(motor.peak_torque, ramp_time)
     if tc is not None:
         tc.reset()
 
@@ -104,7 +107,7 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     sigma = relaxation_length
     stop_x = STAGE + LENGTH + 0.5
 
-    t = x = v = omega = kappa = a_filt = 0.0
+    t = x = v = omega = kappa = a_filt = t_lagged = 0.0
     bus_v = pack.v_oc
     rows = []
     append = rows.append
@@ -115,10 +118,14 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
         fx = 2.0 * tire.fx(kappa, 0.5 * fz_r)
 
         slip = (omega * r - v) / max(v, slip_speed_floor)
-        t_req = motor.peak_torque * (min(t / ramp_time, 1.0) if ramp_time > 0 else 1.0)
+        t_req = min(request(t, v), motor.peak_torque)
         scale = tc.update(t, slip) if tc is not None else 1.0
+        if car.torque_tau > 0:   # inverter torque response
+            t_lagged += dt * (t_req * scale - t_lagged) / car.torque_tau
+        else:
+            t_lagged = t_req * scale
         omega_m = omega * gr
-        torque, bus_v, current = _powertrain_torque(car, motor, pack, t_req * scale, omega_m, bus_v)
+        torque, bus_v, current = _powertrain_torque(car, motor, pack, t_lagged, omega_m, bus_v)
 
         drag = car.drag(v)
         rolling = car.crr * fz_tot if v > 0 or fx > 0 else 0.0
@@ -149,17 +156,17 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
 
 def quasi_static(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "cosmx600v",
                  tire=None, *, dt: float = 2e-4, t_max: float = 8.0, ramp_time: float = 0.1,
-                 label: str = "ideal TC (quasi-static)") -> Result:
+                 grip_margin: float = 1.0, label: str = "ideal TC (quasi-static)") -> Result:
     """No wheel slip dynamics: drive force = min(motor force, peak tire grip).
 
     Equivalent to a perfect traction controller; the upper bound for `simulate`.
+    motor_torque is the torque actually used: when grip-limited, what it takes to
+    hold the tires at peak (times grip_margin) and spin up the driveline with the car.
     """
-    from .tire import CurveTire
-
     car = car or Car()
     motor = MotorMap(motor) if isinstance(motor, str) else motor
     pack = Pack(_pack_by_name(pack)) if isinstance(pack, str) else pack
-    tire = tire or CurveTire()
+    tire = tire or default_tire()
 
     r, gr, m = car.tire_radius, car.final_drive, car.mass
     eta = car.driveline_eff
@@ -178,14 +185,13 @@ def quasi_static(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | 
         drag = car.drag(v)
         rolling = car.crr * car.total_load(v) if v > 0 or torque > 0 else 0.0
         a_motor = (torque * gr * eta / r - drag - rolling) / m_all
-        # grip limit depends on load transfer, which depends on a: fixed-point iterate
-        a_grip = a
-        for _ in range(4):
-            fz_r = car.rear_load(a_grip, v)
-            k_pk, mu_pk = tire.peak(0.5 * fz_r)
-            a_grip = (mu_pk * fz_r - drag - rolling) / m_front
+        a_grip, fx_grip = grip_limited_accel(car, tire, v, j_rear, a, grip_margin)
         a = min(a_motor, a_grip)
         fz_r = car.rear_load(a, v)
+        if a_grip <= a_motor:
+            # J * domega/dt = T * gr * eta - Fx * r, with domega/dt = a / r
+            torque = (fx_grip * r + j_rear * a / r) / (gr * eta)
+            torque, bus_v, current = _powertrain_torque(car, motor, pack, torque, omega_m, bus_v)
         rows.append((t, x, v, a, torque, t_req, omega_m * RPM_PER_RADS, bus_v, current,
                      fz_r, a_grip <= a_motor))
         v += a * dt
@@ -198,6 +204,28 @@ def quasi_static(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | 
                                      "motor_rpm", "bus_v", "bus_i", "fz_rear", "grip_limited"])
     df["slip"] = float("nan")
     return Result(df, label)
+
+
+def grip_limited_accel(car, tire, v, j_rear, a_guess=0.0, grip_margin=1.0):
+    """Acceleration (and rear axle Fx) with the rear tires at peak grip * grip_margin.
+
+    Rear load depends on acceleration (load transfer), so fixed-point iterate.
+    """
+    m_front = car.mass + 2 * car.wheel_inertia / (car.tire_radius ** 2)
+    drag = car.drag(v)
+    rolling = car.crr * car.total_load(v)
+    a = a_guess
+    for _ in range(6):
+        fz_r = car.rear_load(a, v)
+        fx = 2.0 * grip_margin * tire.peak(0.5 * fz_r)[1] * 0.5 * fz_r
+        a = (fx - drag - rolling) / m_front
+    return a, fx
+
+
+def _ramp(peak, ramp_time):
+    if ramp_time <= 0:
+        return lambda t, v: peak
+    return lambda t, v: peak * min(t / ramp_time, 1.0)
 
 
 def _pack_by_name(name):

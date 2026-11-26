@@ -4,6 +4,7 @@
     peak(fz)      -> (slip ratio at peak Fx, peak mu)
 """
 import bisect
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -95,3 +96,10 @@ class PacejkaTire:
         i, di = self._fz_index(fz)
         (k0, m0), (k1, m1) = self._peaks[i], self._peaks[i + 1]
         return k0 + (k1 - k0) * di, m0 + (m1 - m0) * di
+
+
+@lru_cache(maxsize=1)
+def default_tire() -> PacejkaTire:
+    """The sim's default tire: TTC LC0 18x6-7 fit, scaled 0.6 to road grip. Matches
+    KS5e wheelspin better than CurveTire, which loses grip too fast past the peak."""
+    return PacejkaTire()

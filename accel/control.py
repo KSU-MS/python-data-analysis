@@ -13,11 +13,13 @@ from dataclasses import dataclass, field
 
 @dataclass
 class SlipTC:
-    # defaults tuned on CurveTire (peak slip ~0.2), FD 2.4-4.5: within ~1.3% of
-    # ideal TC. Much higher kp limit-cycles against the wheel/tire shuffle mode.
-    target_slip: float = 0.17
-    kp: float = 0.5
-    ki: float = 3.0            # 1/s
+    # gains tuned by sweep on the LC0 tire with inverter lag, FD 3.0-4.5: within
+    # 0.7% of ideal TC, <0.035 slip overshoot. Much higher kp limit-cycles against
+    # the wheel/tire shuffle mode. Default target is 0.85 x the LC0 tire's peak
+    # slip of 0.12; use for_tire() for other tires.
+    target_slip: float = 0.10
+    kp: float = 0.3
+    ki: float = 1.0            # 1/s
     kd: float = 0.0            # s
     # integral gain multiplier while slip is below target, so torque comes back
     # quickly once grip is available (e.g. as the car goes motor-limited)

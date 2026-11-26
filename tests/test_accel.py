@@ -64,7 +64,7 @@ def test_no_tc_wheelspin_and_tc_recovers(motor):
     no_tc = simulate(car, motor)
     tc = simulate(car, motor, tc=SlipTC())
     assert no_tc.df["slip"].max() > 2          # spins up
-    assert no_tc.accel_time > ideal * 1.1
+    assert no_tc.accel_time > ideal * 1.05     # LC0 keeps most grip past peak
     assert tc.accel_time < no_tc.accel_time
     assert tc.accel_time == pytest.approx(ideal, rel=0.025)
 
@@ -107,3 +107,21 @@ def test_ks5e_sim_matches_clean_real_run():
     clean = next(r for r in load_ks5e_runs() if r.attrs["label"].endswith("@ 260.5s"))
     sim = simulate(**KS5E_SETUP, tc=SlipTC())
     assert sim.accel_time == pytest.approx(time_to(clean, 75.3, 0.3), rel=0.02)
+
+
+def test_launch_strategies(motor):
+    from accel.launch import grip_launch_map
+
+    car = Car()
+    ideal = quasi_static(car, motor).accel_time
+    stomp = simulate(car, motor).accel_time
+    gmap = simulate(car, motor, torque_request=grip_launch_map(car, motor, margin=0.97)).accel_time
+    assert gmap < stomp                       # capping at grip beats spinning
+    assert gmap == pytest.approx(ideal, rel=0.03)
+
+
+@pytest.mark.parametrize("grip", [0.9, 1.1])
+def test_tc_robust_to_grip(motor, grip):
+    tire = PacejkaTire(scale=0.6 * grip)
+    ideal = quasi_static(Car(), motor, tire=tire).accel_time
+    assert simulate(Car(), motor, tire=tire, tc=SlipTC()).accel_time == pytest.approx(ideal, rel=0.015)

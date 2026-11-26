@@ -5,6 +5,7 @@ import pandas as pd
 
 from . import Car, CurveTire, MotorMap, PACKS, PacejkaTire, SlipTC, quasi_static, simulate
 from .powertrain import MOTORS
+from .tire import default_tire
 
 
 def main():
@@ -12,13 +13,13 @@ def main():
     p.add_argument("--fd", type=float, nargs="+", default=[Car.final_drive], help="final drive(s)")
     p.add_argument("--motor", choices=sorted(MOTORS), default="228HV")
     p.add_argument("--pack", choices=sorted(PACKS), default="cosmx600v")
-    p.add_argument("--tire", choices=["curve", "lc0"], default="curve")
+    p.add_argument("--tire", choices=["curve", "lc0"], default="lc0")
     p.add_argument("--mu", type=float, default=1.4, help="peak mu for --tire curve")
     p.add_argument("--mass", type=float, default=Car.mass)
     p.add_argument("--plot", metavar="PNG", help="save time traces of the first final drive")
     args = p.parse_args()
 
-    tire = PacejkaTire() if args.tire == "lc0" else CurveTire(mu_peak=args.mu)
+    tire = default_tire() if args.tire == "lc0" else CurveTire(mu_peak=args.mu)
     motor = MotorMap(args.motor)
     rows, first = [], None
     for fd in args.fd:

@@ -29,8 +29,9 @@ pytest tests                                 # physics/TC sanity checks
 
 - `params.py`: car parameters (mass, CG, aero, inertias, ...). Values marked ESTIMATE need measuring.
 - `powertrain.py`: tabulated EMRAX torque(rpm, bus V) from `motor.py`, accumulator as Voc + R.
-- `tire.py`: `CurveTire` (tire/mu-vs-slip.csv shape, scaled) or `PacejkaTire` (TTC fits in `tire/`).
+- `tire.py`: `PacejkaTire` (TTC fits in `tire/`, default LC0) or `CurveTire` (tire/mu-vs-slip.csv shape, scaled).
 - `control.py`: slip-target PI traction control.
+- `launch.py`: launch torque strategies (driver ramp, grip-limited launch map, numerical optimizer).
 - `sim.py`: `simulate` (wheel spin dynamics) and `quasi_static` (ideal-TC bound, the joe-accel model).
 - `compare.py`: reference data (OptimumLap run, KS5e launch logs) and matching sim setups;
   the validation plots are at the bottom of `accel_sim.ipynb`.

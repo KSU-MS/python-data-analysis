@@ -29,6 +29,10 @@ class Car:
     # standing in for pitch/suspension dynamics. 0 = instantaneous.
     pitch_tau: float = 0.05         # s
 
+    # inverter torque response (first-order lag); KS5e logs show 30-60 ms from
+    # command to feedback, part of which is logging latency. ESTIMATE
+    torque_tau: float = 0.03        # s
+
     power_limit: float = 80e3       # W at the accumulator (FSAE EV rule)
 
     @property
