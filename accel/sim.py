@@ -78,7 +78,7 @@ def _powertrain_torque(car, motor, pack, t_cmd, omega_m, bus_v):
     return max(torque, 0.0), v, current
 
 
-def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "energus300v",
+def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "cosmx600v",
              tire=None, tc: SlipTC | None = None, *, dt: float = 2e-4, t_max: float = 8.0,
              ramp_time: float = 0.1, relaxation_length: float = 0.15,
              slip_speed_floor: float = 1.0, label: str = "") -> Result:
@@ -147,7 +147,7 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     return Result(df, label or ("TC" if tc else "no TC"))
 
 
-def quasi_static(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "energus300v",
+def quasi_static(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str = "cosmx600v",
                  tire=None, *, dt: float = 2e-4, t_max: float = 8.0, ramp_time: float = 0.1,
                  label: str = "ideal TC (quasi-static)") -> Result:
     """No wheel slip dynamics: drive force = min(motor force, peak tire grip).

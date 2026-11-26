@@ -11,7 +11,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--fd", type=float, nargs="+", default=[Car.final_drive], help="final drive(s)")
     p.add_argument("--motor", choices=sorted(MOTORS), default="228HV")
-    p.add_argument("--pack", choices=sorted(PACKS), default="energus300v")
+    p.add_argument("--pack", choices=sorted(PACKS), default="cosmx600v")
     p.add_argument("--tire", choices=["curve", "lc0"], default="curve")
     p.add_argument("--mu", type=float, default=1.4, help="peak mu for --tire curve")
     p.add_argument("--mass", type=float, default=Car.mass)

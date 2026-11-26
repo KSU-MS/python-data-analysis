@@ -84,3 +84,26 @@ def test_accel_time_is_plausible(motor):
     r = simulate(Car(), motor, tc=SlipTC())
     assert 3.5 < r.accel_time < 5.5
     assert not math.isnan(r.accel_time)
+
+
+def test_reference_data_loads():
+    from accel.compare import load_ks5e_runs, load_optimumlap, time_to
+
+    olap = load_optimumlap()
+    assert olap["x"].max() == pytest.approx(75.0)
+    assert time_to(olap, 75) == pytest.approx(4.797, abs=0.01)
+
+    runs = load_ks5e_runs()
+    assert len(runs) == 10
+    for r in runs:
+        assert r["t"].iloc[0] == 0.0
+        assert r["torque_request"].max() >= 200
+
+
+def test_ks5e_sim_matches_clean_real_run():
+    """The run that hooked up cleanly (no wheelspin) is within 2% of the TC sim."""
+    from accel.compare import KS5E_SETUP, load_ks5e_runs, time_to
+
+    clean = next(r for r in load_ks5e_runs() if r.attrs["label"].endswith("@ 260.5s"))
+    sim = simulate(**KS5E_SETUP, tc=SlipTC())
+    assert sim.accel_time == pytest.approx(time_to(clean, 75.3, 0.3), rel=0.02)

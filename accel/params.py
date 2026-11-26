@@ -12,7 +12,7 @@ class Car:
     wheelbase: float = 1.61544      # m
     front_weight: float = 0.5       # static fraction of weight on the front axle
     tire_radius: float = 0.229      # m, loaded radius
-    final_drive: float = 2.4        # motor rev / wheel rev
+    final_drive: float = 3.0        # motor rev / wheel rev
     driveline_eff: float = 0.95     # chain + bearings
     motor_eff: float = 0.90         # motor * inverter, battery -> shaft
 

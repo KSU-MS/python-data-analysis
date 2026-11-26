@@ -32,3 +32,5 @@ pytest tests                                 # physics/TC sanity checks
 - `tire.py`: `CurveTire` (tire/mu-vs-slip.csv shape, scaled) or `PacejkaTire` (TTC fits in `tire/`).
 - `control.py`: slip-target PI traction control.
 - `sim.py`: `simulate` (wheel spin dynamics) and `quasi_static` (ideal-TC bound, the joe-accel model).
+- `compare.py`: reference data (OptimumLap run, KS5e launch logs) and matching sim setups;
+  the validation plots are at the bottom of `accel_sim.ipynb`.

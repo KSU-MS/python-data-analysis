@@ -23,7 +23,7 @@ ROTOR_INERTIA = {"228MV": 0.0383, "228HV": 0.0383, "208MV": 0.0256, "208HV": 0.0
 
 class MotorMap:
     def __init__(self, name: str, rpm_step: float = 100.0, v_min: float = 150.0,
-                 v_max: float = 320.0, v_step: float = 10.0):
+                 v_max: float = 650.0, v_step: float = 20.0):
         motor: Motor = MOTORS[name]
         self.name = name
         self.peak_torque = PEAK_TORQUE[name]
