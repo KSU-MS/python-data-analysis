@@ -19,6 +19,19 @@ jobs:
       - name: Notebook runs end to end
         run: nix develop -c jupyter nbconvert --to notebook --execute accel_sim.ipynb --output-dir "$RUNNER_TEMP"
 
+  # the non-Nix setup from the README: plain uv against the same uv.lock
+  uv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Sync and test
+        run: |
+          uv sync --locked
+          uv run pytest -q
+
   controller-teensy:
     runs-on: ubuntu-latest
     steps:

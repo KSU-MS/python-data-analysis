@@ -17,10 +17,14 @@ scripts for log analysis, motor curves and battery sims.
 
 ## Setup
 
+Python dependencies live in `pyproject.toml`, locked in `uv.lock`. Both setups below
+install exactly those versions: with Nix, [uv2nix](https://github.com/pyproject-nix/uv2nix)
+builds the environment from `uv.lock`; without Nix, [uv](https://docs.astral.sh/uv/) does.
+
 ### NixOS (or any machine with Nix)
 
-Everything (Python, packages, compilers, the Rerun viewer) comes from `flake.nix`,
-prebuilt from the Nix binary cache, so there's no pip/venv step.
+Everything (Python, the locked packages, compilers, the Rerun viewer) comes from
+`flake.nix`. No pip, no venv to manage.
 
 1. Flakes need to be enabled. On NixOS, in your system config:
    ```nix
@@ -36,36 +40,48 @@ prebuilt from the Nix binary cache, so there's no pip/venv step.
    ```
    With [direnv](https://direnv.net), run `direnv allow` once and the shell loads
    whenever you `cd` in.
-3. Check it works: `pytest -q tests` (about 10 s).
+3. Check it works: `pytest -q` (about 10 s).
 
 The shell also sets `PYTHONPATH` to the repo root and configures the `nbstripout`
-git filter (below). For the Teensy cross-compiler, use the separate
-`nix develop .#firmware` shell (~1 GB, so it's not in the default one).
+git filter (below). `uv run ...` works inside it too and uses the Nix-built
+environment (it never syncs or downloads). For the Teensy cross-compiler, use the
+separate `nix develop .#firmware` shell (~1 GB, so it's not in the default one).
+
+**Adding or upgrading a Python package:** `uv add <pkg>` (or `uv lock --upgrade-package
+<pkg>`) inside the shell updates `pyproject.toml` and `uv.lock`; then re-enter the shell
+(`exit` + `nix develop`, or `direnv reload`) and Nix rebuilds the environment from the
+new lock. If a new package ships a wheel that links a system library it doesn't bundle,
+Nix's build says which one; add it in `wheelLibs` in `flake.nix` (like `rerun-sdk` and
+libudev). `rerun-sdk` is pinned to the Rerun viewer version nixpkgs ships, since the two
+must match; bump them together.
 
 ### Without Nix (Linux, macOS, Windows/WSL)
 
-1. Install Python >= 3.10, git, make and a C++17 compiler:
-   - Debian/Ubuntu: `sudo apt install python3 python3-venv git build-essential`
-   - macOS: `xcode-select --install` (plus Python from python.org or Homebrew)
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), git, make and a
+   C++17 compiler (uv fetches a suitable Python itself if you don't have one):
+   - Debian/Ubuntu: `sudo apt install git build-essential` and
+     `curl -LsSf https://astral.sh/uv/install.sh | sh`
+   - macOS: `xcode-select --install` and `brew install uv`
    - Windows: use WSL (Ubuntu) and follow the Ubuntu line. The controller builds a
      shared library with make/g++, which native Windows doesn't have.
-2. Clone, make a virtualenv, install:
+2. Clone and sync (creates `.venv` from `uv.lock`, a few seconds):
    ```sh
    git clone https://github.com/mathbrook/python-data-analysis
    cd python-data-analysis
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   export PYTHONPATH="$PWD"        # scripts and notebooks import from the repo root
+   uv sync
    ```
 3. Set up the notebook output filter (commits are refused without it, see below):
    ```sh
-   git config filter.nbstripout.clean nbstripout
+   git config filter.nbstripout.clean "uv run --quiet nbstripout"
    git config filter.nbstripout.smudge cat
    git config filter.nbstripout.required true
-   git config diff.ipynb.textconv "nbstripout -t"
+   git config diff.ipynb.textconv "uv run --quiet nbstripout -t"
    ```
-4. Check it works: `pytest -q tests`.
+4. Check it works: `uv run pytest -q`.
+
+Prefix commands with `uv run` (as in the quick start below), or `source .venv/bin/activate`
+once per terminal and drop the prefix. Run them from the repo root: modules are imported
+from there. Add packages with `uv add <pkg>`.
 
 For the Teensy cross-compile, install the ARM toolchain
 (`sudo apt install gcc-arm-none-eabi`, or Arm's GNU toolchain on macOS).
@@ -79,7 +95,8 @@ megabytes of plots.
 
 ## Quick start
 
-From the dev shell (or activated venv):
+From the Nix dev shell, or without Nix prefix each command with `uv run`
+(e.g. `uv run python -m accel ...`):
 
 ```sh
 # accel times for a few final drives: ideal TC vs no TC vs TC
@@ -96,7 +113,7 @@ python -m accel.viz
 jupyter lab accel_sim.ipynb
 
 # tests (sim physics, controller, logging/replay, system ID)
-pytest -q tests
+pytest -q
 ```
 
 From Python:
@@ -173,4 +190,5 @@ The Rerun viewer sends anonymous usage stats by default (features used, not your
 | `motor.py`, `battery.py`, `tire/` | motor dq model, pack model, Pacejka tire fits (used by `accel/`) |
 | `cardata/`, `olapsims/`, `dynoruns/` | logged car data, OptimumLap export, dyno pulls |
 | other `*.ipynb`, `*.py` | older log analysis, motor curve, battery and wiring scripts; many read logs from paths that aren't in the repo |
-| `flake.nix`, `requirements.txt` | Nix dev shell; pip requirements for non-Nix setups |
+| `pyproject.toml`, `uv.lock` | Python dependencies and their lock (uv) |
+| `flake.nix`, `flake.lock` | Nix dev shell: builds the env from `uv.lock` via uv2nix, plus compilers and the Rerun viewer |
