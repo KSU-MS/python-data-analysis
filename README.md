@@ -56,3 +56,11 @@ frames at CAN rates with latency and noise. The same sources are meant to compil
   `uncertainty.RANGES`.
 - `make -C controller teensy` (in `nix develop .#firmware`) cross-compiles the controller for the
   Teensy 4.1. CI (`.github/workflows/ci.yml`) runs the tests, the notebook and that cross-compile.
+
+## Visualization
+
+`python -m accel.viz` replays no TC vs the VCU controllers as a 3D drag race in [Rerun](https://rerun.io)
+(one lane per run, body pitch from load transfer, spoked wheels so rear wheelspin is visible, arrows for rear
+tire force and load) with speed / accel / slip / torque / TC / learned mu plots on the same timeline.
+`--save runs.rrd` writes the recording instead; open it later with `rerun runs.rrd`. From code,
+`accel.viz.show_runs({"name": result, ...}, car)`.

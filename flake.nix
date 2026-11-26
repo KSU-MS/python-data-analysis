@@ -28,10 +28,13 @@
             ipympl
             jupyterlab
             pytest
+            rerun-sdk
           ]);
         in {
           default = pkgs.mkShell {
-            packages = [ python pkgs.ruff pkgs.nbstripout ];
+            # rerun: the viewer for accel/viz.py. First, so it wins over the Python
+            # SDK's `rerun` shim, which expects a bundled binary nixpkgs leaves out
+            packages = [ pkgs.rerun python pkgs.ruff pkgs.nbstripout ];
             shellHook = ''
               export PYTHONPATH="$PWD''${PYTHONPATH:+:$PYTHONPATH}"
               # strip notebook outputs on commit (see .gitattributes). Uses the

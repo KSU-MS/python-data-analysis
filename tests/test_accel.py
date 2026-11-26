@@ -125,3 +125,12 @@ def test_tc_robust_to_grip(motor, grip):
     tire = PacejkaTire(scale=0.6 * grip)
     ideal = quasi_static(Car(), motor, tire=tire).accel_time
     assert simulate(Car(), motor, tire=tire, tc=SlipTC()).accel_time == pytest.approx(ideal, rel=0.015)
+
+
+def test_rerun_recording(tmp_path, motor):
+    from accel.viz import show_runs
+
+    runs = {"no TC": simulate(Car(), motor), "TC": simulate(Car(), motor, tc=SlipTC())}
+    path = show_runs(runs, Car(), save=str(tmp_path / "runs.rrd"))
+    assert (tmp_path / "runs.rrd").stat().st_size > 10_000
+    assert path.endswith("runs.rrd")
