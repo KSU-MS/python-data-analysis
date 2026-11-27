@@ -242,9 +242,8 @@ lift-and-coast (lift when a braking zone is coming). `Car()` is the current car 
 its wing closed; `Car().open_aero()` is the wing set open by hand (the accel tooling
 uses that). DRS switches between the two while driving: a model input (wing position
 blending drag, downforce and aero balance) driven by a `DrsPolicy` (open when fast,
-nearly straight, on the gas, not braking; actuator travel time). Aero drag is from
-python-endurance-drag-energy-calculator's calc_drag.ipynb; downforce is a placeholder
-(see below).
+nearly straight, on the gas, not braking; actuator travel time). The closed-wing aero is
+measured (`kmslap aero`); the open-wing values are estimates (see below).
 
 **Regen** is off unless `drive()` / `endurance()` get a `RegenPolicy`; off, the model is
 exactly the motoring-only one. On, negative motor torque generates through the rear
@@ -399,13 +398,10 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
   45% front, CdA 1.30 (soft: 1.2-1.45). Still wanted: the DRS-open values (estimated
   1.22 / 62% front / 1.14 from a typical rear-wing share and published DRS losses; with
   them DRS doesn't pay in the endurance tuning, so measuring them decides DRS), faster
-  coast-downs for the absolute CdA, and a check above 19 m/s. The downforce is a placeholder copied from other teams: closed ClA
-  5.0 is our CdA times the L/D (2.4) of a published full-aero FSAE car
-  ([ClA 5.47 / CdA 2.28](https://pidduuu.github.io/jekyll/update/2023/10/01/Justification-for-Aerodynamics.html));
-  open ClA 3.0 applies [Monash's FSAE DRS](https://people.eng.unimelb.edu.au/imarusic/proceedings/19/387.pdf)
-  downforce losses (front wing -37%, rear wing -67%) to a typical wing/undertray split.
-  Coast-down tests in both configs would give CdA; ride height sensors or shock pots
-  under speed give ClA and balance. DRS actuator travel time.
+  coast-downs for the absolute CdA, and a check above 19 m/s. For DRS: a with / without
+  DRS run like the 2024 aero tests (`kmslap aero` takes the same signals), and the
+  actuator travel time. DRS-loss sources: [Monash](https://people.eng.unimelb.edu.au/imarusic/proceedings/19/387.pdf),
+  [Princeton](https://theses-dissertations.princeton.edu/entities/publication/d8f28794-2ba5-4118-a56a-78053fdba607/full).
 - **Mass properties:** mass with driver, CG height, weight distribution, yaw inertia,
   wheel and driveline inertias, motor rotor inertia (EMRAX datasheet, VERIFY).
 - **Geometry:** front/rear track, steering ratio and maximum steering angle,
