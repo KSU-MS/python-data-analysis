@@ -132,6 +132,11 @@ class Pack:
                             else pack.maxdischarge)
         self.max_charge_current = (sheet["charge"]["continuous_a"] * pack.parallelCount if sheet
                                    else 0.5 * pack.maxdischarge)
+        # the charge peak (regen braking): this current for up to peak_charge_s at a time
+        # (the BMS's charge limit; the loaded cell voltage limit still applies)
+        self.peak_charge_current = (sheet["charge"]["peak_a"] * pack.parallelCount
+                                    if sheet and "peak_a" in sheet["charge"] else self.max_charge_current)
+        self.peak_charge_s = sheet["charge"].get("peak_s", 0.0) if sheet else 0.0
         self.series, self.parallel = pack.seriesCount, pack.parallelCount
         self.capacity_ah = pack.cell.maxcapacity * pack.parallelCount / 1000
         # cell open-circuit voltage vs state of charge, from the cell's capacity curve

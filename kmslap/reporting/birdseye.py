@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from kmslap import dirs
 from kmslap.reporting.runs import lap_frame
 
 COLORS = ["#e6504a", "#468ce6", "#5abe6e", "#e6aa32", "#9b59b6", "#17becf", "#8c564b", "#e377c2",
@@ -60,7 +61,8 @@ def drive_lap(s: Strategy, path=None) -> pd.DataFrame:
     res = endurance(car, laps=2, path=path, speed=speed, coast_time=s.coast_time,
                     drs=DrsPolicy(**s.drs) if s.drs is not None else None,
                     regen=RegenPolicy(**s.regen) if s.regen is not None else None,
-                    driver_change=False, log_period=0.05, torque_mode=s.torque_mode)
+                    driver_change=False, log_period=0.05, torque_mode=s.torque_mode,
+                    label=f"birdseye {s.name}")
     t1, t2 = res.lap_times[0], res.lap_times[0] + res.lap_times[1]
     return lap_frame(res.df, t1, t2)
 
@@ -199,7 +201,17 @@ def lap_gif(laps: dict, path=None, out="flying_lap.gif", fps: int = 15, speedup:
     fig.tight_layout()
     # .mp4 through ffmpeg (much smaller and faster to write); anything else a GIF
     writer = FFMpegWriter(fps=fps, bitrate=3000) if str(out).endswith(".mp4") else PillowWriter(fps=fps)
-    FuncAnimation(fig, draw, frames=len(frames), blit=False).save(out, writer=writer)
+    from kmslap import progress
+    # into a partial file, renamed when done: stopped midway (Ctrl-C), the writer still
+    # closes the video cleanly, which would leave a short but valid file under `out`
+    part = Path(out).with_name(Path(out).stem + ".partial" + Path(out).suffix)
+    try:
+        with progress.task(f"rendering {Path(out).name}: {len(laps)} laps", total=len(frames)) as task:
+            FuncAnimation(fig, draw, frames=len(frames), blit=False).save(
+                part, writer=writer, progress_callback=lambda i, n: task.update(completed=i + 1))
+        part.replace(out)
+    finally:
+        part.unlink(missing_ok=True)
     plt.close(fig)
 
 
@@ -248,15 +260,14 @@ def drivetrain_strategies(base: Strategy = None) -> list:
             for d, m in LINEUP]
 
 
-def run(out: str = "birdseye", strategies=None, gif: bool = True, drivetrains: bool = False) -> dict:
+def run(out: str | None = None, strategies=None, gif: bool = True, drivetrains: bool = False) -> dict:
     """drivetrains: the best preset on every drivetrain variant, not the presets."""
     from kmslap.events.track import michigan_2026_endurance
 
     if drivetrains:
         strategies = drivetrain_strategies()
 
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = dirs.out("birdseye", out)          # None: out/birdseye
     path = michigan_2026_endurance()
     laps = {s.name: drive_lap(s, path) for s in (strategies or PRESETS)}
     for name, d in laps.items():

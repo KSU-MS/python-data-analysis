@@ -157,3 +157,24 @@ def test_qp_launches_with_little_slip():
     r = accel("4wd_dti", "qp", {})
     assert r["accel_slip"] < 0.3
     assert r["accel_s"] < accel("4wd_dti", "load", {})["accel_s"]
+
+
+def test_lap_plan_drives_the_hub_motors():
+    from kmslap.car.powertrain import MotorMap
+    from kmslap.car.tire import default_tire
+    from kmslap.models import mintime_dt
+    car = variant("4wd_dti")
+    assert mintime_dt.controls(car)[-4:] == ["hub_fl", "hub_fr", "hub_rl", "hub_rr"]
+    assert mintime_dt.controls(Car()) == mintime_dt.CONTROLS
+    model = mintime_dt._model(car, MotorMap("228HV"), default_tire(), 550.0, 1.0)
+    x = [15.0, 0.0, 0.0, 0.0, 0.0]
+    u = lambda hub: [0.0] * 9 + [hub, 0.0, 0.0, 0.0]          # straight, no slip: no tire force
+    _, _, eq0, ineq0, _ = (np.asarray(a).ravel() for a in model(x, u(0.0), 0.0))
+    _, _, eq1, ineq1, _ = (np.asarray(a).ravel() for a in model(x, u(20.0), 0.0))
+    # front left's torque balance is off by the hub's wheel torque; the others aren't
+    assert eq1[2] - eq0[2] == pytest.approx(-20.0 * car.hub_ratio * car.hub_gear_eff)
+    assert np.allclose(np.delete(eq1 - eq0, 2), 0.0)
+    # its power comes out of the 80 kW: more than the shaft power (losses)
+    shaft = 20.0 * 15.0 / car.tire_radius * car.hub_ratio
+    assert ineq0[1] - ineq1[1] > shaft * car.motor_eff
+    assert ineq1[2] == pytest.approx(ineq0[2] - 20.0, abs=1e-6)  # fl's torque curve headroom

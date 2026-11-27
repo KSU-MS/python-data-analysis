@@ -13,6 +13,7 @@ cluster:  the same candidates through kmslap.ops.cluster across this machine and
           remotes (live dashboard in a terminal); also saves a timeline plot.
 Each writes a JSON (machine, cores, timings) into --out.
 """
+from kmslap import dirs
 import itertools
 import json
 import math
@@ -117,10 +118,9 @@ def cluster(n: int, remotes: list[str], local_workers: int | None, timeline: Pat
 
 
 def record(what: str, n: int = 96, workers: int | None = None, remote: list[str] = (),
-           out: str = "bench") -> dict:
+           out: str | None = None) -> dict:
     """Run one benchmark (single / parallel / cluster), save and print its JSON."""
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = dirs.out("bench", out)          # None: out/bench
     m = _machine()
     if what == "single":
         res = single()

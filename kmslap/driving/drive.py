@@ -10,6 +10,7 @@ through the VCU controller, into vehicle.py's model.
 
     accel drive --out drive.png     # skidpad + a lap, plotted
 """
+import contextlib
 import math
 import time
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from kmslap import dirs
 from kmslap.models import twotrack as vehicle
 from kmslap.car.params import Car
 from kmslap.car.powertrain import PACKS, MotorMap, Pack
@@ -36,7 +38,7 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
           relaxation_length: float = 0.15, relaxation_length_lat: float = 0.3,
           drs=None, regen=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0,
           pack_backend=None, realtime: bool = False, on_tick=None, torque_mode: str = "load",
-          torque_controller=None, inverters=None) -> DriveResult:
+          torque_controller=None, inverters=None, progress: str | None = None) -> DriveResult:
     """Run until the driver is done or t_max.
 
     The driver's pedal maps linearly to a torque request (0..motor peak), as the VCU's
@@ -65,6 +67,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     inverters: the hub motors' commands through their inverters (vcu/inverter.py):
     "native" (DTI current mode, AMK speed mode with torque limits, as the car's hub
     motors) or an Inverters. None: the torque asked for goes straight to the motors.
+    progress: a description for a progress line in the terminal (kmslap.progress): by
+    laps for a driver that counts them, else by time. None: none.
     on_tick(t, state, out, inputs): called at the driver rate (state / out by
     twotrack.STATES / OUTPUTS, inputs a dict of the driver's and the command); a true
     return stops the run.
@@ -103,7 +107,7 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     gr = car.final_drive
 
     state, out = plant.state, [0.0] * len(O)
-    hub_cmds = (0.0, 0.0, 0.0, 0.0)
+    hub_cmds = vcu_hub_cmds = (0.0, 0.0, 0.0, 0.0)   # to the motors; what the VCU asked
     # hub motors: the torque split gives every motor its command, at the driver rate
     split = torque_controller
     if split is None and (car.hub_front or car.hub_rear):
@@ -125,86 +129,118 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     wing_rate = dt / drs.travel_time if drs is not None else 0.0
     t, next_driver, next_log = 0.0, 0.0, 0.0
     rows = []
-    for _ in range(int(t_max / dt)):
-        if realtime and t >= next_pace - 1e-12:
-            next_pace += pace_period
-            ahead = wall0 + t - time.perf_counter()
-            if ahead > 0.002:
-                time.sleep(ahead - 0.001)
-            while time.perf_counter() < wall0 + t:
-                pass
-            lateness = max(-ahead, 0.0)
-        if pack_backend is not None and t >= next_pack - 1e-12:
-            next_pack += pack_backend.period
-            ext = pack_backend.exchange(t, out[icur], state[ibus])
-            plant.set_param(i_ext_v, ext["v_oc"])
-            plant.set_param(i_ext_r, ext["r"])
-            plant.set_state(isoc, ext["soc"])
-            plant.set_state(itemp, ext["temp"])
-            state = plant.state
-        if t >= next_driver - 1e-12:
-            next_driver += driver_period
-            obs = {"X": state[iX], "Y": state[iY], "psi": state[ipsi], "vx": state[ivx],
-                   "vy": state[ivy], "r": state[ir], "ax": out[iax], "ay": out[iay]}
-            pedal, brake, sw = driver(t, obs)
-            if driver.done:
-                break
-            if on_tick is not None and on_tick(t, state, out, {"pedal": pedal, "brake": brake,
-                                                                "steering_wheel": sw, "drs": wing,
-                                                                "lateness": lateness}):
-                break
-            if drs is not None:
-                wing_target = drs(obs, pedal, brake, sw)
+    next_tick = 0.0
+    with _progress(progress, driver, t_max) as tick:
+        for _ in range(int(t_max / dt)):
+            if t >= next_tick:
+                next_tick += 0.5
+                tick(t)
+            if realtime and t >= next_pace - 1e-12:
+                next_pace += pace_period
+                ahead = wall0 + t - time.perf_counter()
+                if ahead > 0.002:
+                    time.sleep(ahead - 0.001)
+                while time.perf_counter() < wall0 + t:
+                    pass
+                lateness = max(-ahead, 0.0)
+            if pack_backend is not None and t >= next_pack - 1e-12:
+                next_pack += pack_backend.period
+                ext = pack_backend.exchange(t, out[icur], state[ibus])
+                plant.set_param(i_ext_v, ext["v_oc"])
+                plant.set_param(i_ext_r, ext["r"])
+                plant.set_state(isoc, ext["soc"])
+                plant.set_state(itemp, ext["temp"])
+                state = plant.state
+            if t >= next_driver - 1e-12:
+                next_driver += driver_period
+                obs = {"X": state[iX], "Y": state[iY], "psi": state[ipsi], "vx": state[ivx],
+                       "vy": state[ivy], "r": state[ir], "ax": out[iax], "ay": out[iay]}
+                pedal, brake, sw = driver(t, obs)
+                if driver.done:
+                    break
+                if on_tick is not None and on_tick(t, state, out, {"pedal": pedal, "brake": brake,
+                                                                    "steering_wheel": sw, "drs": wing,
+                                                                    "lateness": lateness}):
+                    break
+                if drs is not None:
+                    wing_target = drs(obs, pedal, brake, sw)
+                if split is not None:
+                    central_cmd, hub_cmds = split(VehicleState(
+                        pedal, brake, sw / car.steer_ratio, tuple(state[i] for i in iw), state[ivx], state[ir],
+                        state[iaxf], state[ibusv], ay=state[iayf], fz=tuple(out[i] for i in ifz),
+                        plan=getattr(driver, "plan_ff", None)))
+                    vcu_hub_cmds = hub_cmds
+                    if inverters is not None:
+                        # each wheel's ground speed: the car's, +- the yaw rate times its half track
+                        half = (car.track_front / 2, -car.track_front / 2, car.track_rear / 2, -car.track_rear / 2)
+                        inverters.command(t, hub_cmds, [(state[ivx] - state[ir] * h) / car.tire_radius * hub_rpm
+                                                        for h in half])
+            if regen is not None:
+                # pedal map with regen at its bottom; the drive part goes through TC, the
+                # regen part (and brake blending) straight to the inverter
+                t_map = regen.pedal_torque(pedal, motor.peak_torque)
+                t_req = max(t_map, 0.0)
+            else:
+                t_req = pedal * motor.peak_torque
             if split is not None:
-                central_cmd, hub_cmds = split(VehicleState(
-                    pedal, brake, sw / car.steer_ratio, tuple(state[i] for i in iw), state[ivx], state[ir],
-                    state[iaxf], state[ibusv], ay=state[iayf], fz=tuple(out[i] for i in ifz)))
-                if inverters is not None:
-                    # each wheel's ground speed: the car's, +- the yaw rate times its half track
-                    half = (car.track_front / 2, -car.track_front / 2, car.track_rear / 2, -car.track_rear / 2)
-                    inverters.command(t, hub_cmds, [(state[ivx] - state[ir] * h) / car.tire_radius * hub_rpm
-                                                    for h in half])
-        if regen is not None:
-            # pedal map with regen at its bottom; the drive part goes through TC, the
-            # regen part (and brake blending) straight to the inverter
-            t_map = regen.pedal_torque(pedal, motor.peak_torque)
-            t_req = max(t_map, 0.0)
-        else:
-            t_req = pedal * motor.peak_torque
-        if split is not None:
-            # the split's share for the EMRAX (if there is one); TC on its drive torque
-            t_req = max(central_cmd, 0.0)
-        if controller is not None and (split is None or t_req > 0):
-            omegas = [state[i] for i in iw]
-            motor_rpm = 0.5 * (omegas[2] + omegas[3]) * gr * rpm_per_rads
-            t_cmd = controller.step(t, dt, omegas, motor_rpm, state[ivx], out[iax],
-                                    out[itq], t_req)
-        else:
-            t_cmd = t_req
-        if regen is not None and t_map <= 0.0 and split is None:
-            t_cmd = max(t_map - regen.blend_torque(brake, car), -regen.max_torque)
-        if split is not None and central_cmd <= 0.0:
-            t_cmd = max(central_cmd, -regen.max_torque) if regen is not None else 0.0
-        wing += max(-wing_rate, min(wing_rate, wing_target - wing))
-        if inverters is not None:
-            hub_cmds = inverters(t, dt, [state[i] * hub_rpm for i in iw])
-        plant(t_cmd, sw / car.steer_ratio, brake * car.max_brake_torque, wing, *hub_cmds)
-        if t >= next_log - 1e-12:
-            next_log += log_period
-            rows.append([t, pedal, brake, sw, wing, t_req, t_cmd, *state, *plant.out])
-        state, out = plant.state, plant.out
-        t += dt
+                # the split's share for the EMRAX (if there is one); TC on its drive torque
+                t_req = max(central_cmd, 0.0)
+            if controller is not None and (split is None or t_req > 0):
+                omegas = [state[i] for i in iw]
+                motor_rpm = 0.5 * (omegas[2] + omegas[3]) * gr * rpm_per_rads
+                t_cmd = controller.step(t, dt, omegas, motor_rpm, state[ivx], out[iax],
+                                        out[itq], t_req)
+            else:
+                t_cmd = t_req
+            if regen is not None and t_map <= 0.0 and split is None:
+                t_cmd = max(t_map - regen.blend_torque(brake, car), -regen.max_torque)
+                if regen.slip_control:
+                    v = max(state[ivx], 1.0)
+                    slip = min((state[i] * car.tire_radius - state[ivx]) / v for i in iw[2:])
+                    t_cmd *= regen.slip_scale(slip, dt)
+            if split is not None and central_cmd <= 0.0:
+                t_cmd = max(central_cmd, -regen.max_torque) if regen is not None else 0.0
+            wing += max(-wing_rate, min(wing_rate, wing_target - wing))
+            if inverters is not None:
+                hub_cmds = inverters(t, dt, [state[i] * hub_rpm for i in iw])
+            hydraulic = regen.hydraulic(brake) if regen is not None else brake
+            plant(t_cmd, sw / car.steer_ratio, hydraulic * car.max_brake_torque, wing, *hub_cmds)
+            if t >= next_log - 1e-12:
+                next_log += log_period
+                rows.append([t, pedal, brake, sw, wing, t_req, t_cmd, *vcu_hub_cmds, *state, *plant.out])
+            state, out = plant.state, plant.out
+            t += dt
 
     df = pd.DataFrame(rows, columns=["t", "pedal", "brake", "steering_wheel", "drs", "torque_request",
-                                     "torque_cmd", *S, *O])
+                                     "torque_cmd", *[f"hub_cmd_{w}" for w in vehicle.WHEELS], *S, *O])
     df["speed"] = np.hypot(df.vx, df.vy)
     df["beta"] = np.arctan2(df.vy, np.maximum(df.vx, 0.1))       # body slip angle
     df["rear_speed_diff"] = (df.omega_rl - df.omega_rr) * car.tire_radius   # m/s, + left faster
     return DriveResult(df, controller.log_frame() if controller is not None else None)
 
 
-def demo(out: str = "drive.png"):
+@contextlib.contextmanager
+def _progress(description, driver, t_max):
+    """tick(t): the progress line's update (a no-op without a description)."""
+    if description is None:
+        yield lambda t: None
+        return
+    from kmslap import progress
+    laps = getattr(driver, "laps", None)
+    n = len(driver.path.s) if laps and hasattr(driver, "path") else 0
+    with progress.task(description, total=laps if n else t_max) as task:
+        def tick(t):
+            if n:
+                task.update(completed=min(driver.laps_done + driver._i / n, laps))
+                task.note(f"lap {min(driver.laps_done + 1, laps)}/{laps}, {t:.0f} s")
+            else:
+                task.update(completed=t)
+        yield tick
+
+
+def demo(out: str | None = None):
     """Skidpad and a short course, plotted into `out`."""
+    out = dirs.out("drive", out, "drive.png")
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

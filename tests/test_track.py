@@ -142,3 +142,51 @@ def test_simulated_log_maps_every_sensor_to_the_latest_dbc(tmp_path):
     assert last["an1_fl_wheelspeed_data"].wheel_rpm == pytest.approx(v / Car().tire_radius * 60 / (2 * np.pi), rel=0.05)
     assert 400 < last["an1_rl_loadcell_data"].force_N < 1500                          # a quarter of the car, roughly
     assert last["vcu_status_data"].vcu_statemachine_state == "READY_TO_DRIVE"
+
+
+@pytest.mark.parametrize("name", ["4wd_dti", "4wd_amk", "awd_emrax_dti"])
+def test_mcap_hub_motor_cars_log_their_inverters(tmp_path, name):
+    """A hub motor car's log in its vehicle's DBC and schema: each hub inverter's frames,
+    the VCU's commands to it, values reading back as the sim's; no Cascadia without
+    the EMRAX."""
+    from mcap.reader import make_reader
+    from mcap_protobuf.decoder import DecoderFactory
+    from kmslap.car.drivetrain import variant
+    from kmslap.driving.drive import drive
+    from kmslap.driving.follower import PathFollower
+    from kmslap.reporting import mcap_log
+
+    car = variant(name)
+    track = T.constant_width(oval(), 6.0)
+    track.origin = (-84.2371765, 42.0688368)
+    f = PathFollower(track.center, speed=12.0, car=car, laps=1)
+    res = drive(f, car, psi0=float(track.center.heading[0]), t_max=6.0, log_period=0.01, torque_mode="qp",
+                inverters="native")
+    counts = mcap_log.write(res.df, track, tmp_path / "sim.mcap", car=car, preroll_s=1.0,
+                            start_ns=1_749_823_200_000_000_000)
+    expected = {m.lower() + "_data" for m in mcap_log.sensors(car)}
+    assert expected <= set(counts)
+    assert ("m192_command_message_data" in counts) == car.central_drive
+    descriptor = (mcap_log.vehicle_dir(car) / "hytech.bin").read_bytes()
+    cmd_topic = "inv_fl_setaccurrent_data" if car.hub_motor == "dti" else "inv_fl_setpoints_1_data"
+    speed_topic = "inv_fl_erpm_duty_voltage_data" if car.hub_motor == "dti" else "inv_fl_actual_values_1_data"
+    last, drove = {}, False
+    with open(tmp_path / "sim.mcap", "rb") as fh:
+        r = make_reader(fh, decoder_factories=[DecoderFactory()])
+        s = r.get_summary()
+        for ch in s.channels.values():
+            if not ch.topic.startswith("/sim"):
+                assert s.schemas[ch.schema_id].data == descriptor, ch.topic
+        for _, ch, _, m in r.iter_decoded_messages(topics=[cmd_topic, speed_topic, "vcu_motor_torque_commands_data"]):
+            last[ch.topic] = m
+            if ch.topic == cmd_topic:
+                drove |= (m.CMD_TargetAcCurrent if car.hub_motor == "dti" else m.torque_limit_positive) > 0
+    assert drove                    # the VCU drove the motor (the inside one regens a little in the turn)
+    wheel_rpm = res.df.omega_fl.iloc[-1] * 60 / (2 * np.pi)
+    motor_rpm = wheel_rpm * car.hub_ratio
+    if car.hub_motor == "dti":
+        assert last[speed_topic].Actual_ERPM == pytest.approx(4 * motor_rpm, rel=0.05)
+    else:
+        assert last[speed_topic].actual_velocity == pytest.approx(motor_rpm, rel=0.05)
+    cmds = last["vcu_motor_torque_commands_data"]
+    assert cmds.vcu_motor_torque_fl + cmds.vcu_motor_torque_fr + cmds.vcu_motor_torque_rl + cmds.vcu_motor_torque_rr > 0

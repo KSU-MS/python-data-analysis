@@ -16,6 +16,7 @@ from typing import Annotated, Optional
 
 import typer
 
+from kmslap import dirs  # light: pathlib only
 from kmslap.ops import remote as _remote_defaults  # light: stdlib only
 
 app = typer.Typer(no_args_is_help=True, rich_markup_mode="rich", add_completion=True,
@@ -25,6 +26,18 @@ remote_app = typer.Typer(no_args_is_help=True, help="Run jobs on another machine
 cluster_app = typer.Typer(no_args_is_help=True, help="Spread jobs over machines (ops.cluster).")
 app.add_typer(remote_app, name="remote")
 app.add_typer(cluster_app, name="cluster")
+
+Out = Annotated[Optional[str], typer.Option(help="where to write (default: out/<command>/ in the repo)")]
+
+
+def _into(path):
+    """Say where a command's output goes, before it starts."""
+    try:
+        shown = path.relative_to(dirs.REPO)
+    except ValueError:
+        shown = path
+    print(f"output: {shown}")
+    return path
 
 
 # --- choices (listed here so completion doesn't import the model; tests check them) ---
@@ -110,10 +123,10 @@ def accel(fd: Annotated[Optional[list[float]], typer.Argument(help="final drive(
 
 
 @app.command()
-def report(out: str = "report", plants: Annotated[int, typer.Option(help="Monte Carlo plants")] = 20):
+def report(out: Out = None, plants: Annotated[int, typer.Option(help="Monte Carlo plants")] = 20):
     """Headline accel sims: drag race GIF, plots, summary.md, metrics.json (what CI runs)."""
     from kmslap.reporting.report import run
-    run(out, plants)
+    run(_into(dirs.out("report", out)), plants)
 
 
 @app.command("report-diff")
@@ -140,18 +153,18 @@ def viz(save: Annotated[Optional[str], typer.Option(help="write this .rrd instea
 
 
 @app.command()
-def drive(out: str = "drive.png"):
+def drive(out: Out = None):
     """Double-track demo: skidpad and a short course, plotted."""
     from kmslap.driving.drive import demo
-    demo(out)
+    demo(_into(dirs.out("drive", out, "drive.png")))
 
 
 @app.command()
 def endurance(laps: int = 18, margin: Annotated[float, typer.Option(help="fraction of the grip envelope")] = 0.8,
-              out: str = "endurance.png"):
+              out: Out = None):
     """Endurance event: wing closed / open / DRS / lift-and-coast compared."""
     from kmslap.events.endurance import compare
-    compare(laps, margin, out)
+    compare(laps, margin, _into(dirs.out("endurance", out, "endurance.png")))
 
 
 @app.command()
@@ -165,16 +178,24 @@ def laptime(track: Annotated[TrackName, typer.Argument(help="michigan2026: the t
             drivetrain: Annotated[Drivetrain, typer.Option(help="car/drivetrain.py variant")] = "rwd_emrax",
             torque_mode: Annotated[TorqueMode, typer.Option(help="hub cars: the torque controller's mode")] = "qp",
             inverters: Annotated[bool, typer.Option(help="hub cars: through the inverters' command models")] = False,
+            regen_travel: Annotated[Optional[float], typer.Option(
+                help="brake pedal travel that's regen only, then hydraulics (FSAE T.3.2.4: <= 0.9); "
+                     "0: no regen. Default: 0.9 with hub motors, 0 for the rear-drive car")] = None,
+            soc: Annotated[float, typer.Option(help="pack state of charge the lap is driven at "
+                                                    "(a full pack takes little regen)")] = 1.0,
             verbose: bool = False):
     """Minimum-time racing line (double track, ~5-7 min, cached), driven, scored, lap saved."""
     from kmslap.events.laptime import run
-    run(track.value, grip, margin, step, label, verbose, width, drivetrain.value, torque_mode.value, inverters)
+    run(track.value, grip, margin, step, label, verbose, width, drivetrain.value, torque_mode.value, inverters,
+        regen_travel, soc)
 
 
 @app.command()
 def race(track: Annotated[TrackName, typer.Argument()] = TrackName.michigan2026,
          label: Annotated[list[str], typer.Option(help="only these saved laps (repeatable)")] = [],
-         out: Annotated[str, typer.Option(help=".gif, or .mp4 (smaller, faster)")] = "race.mp4",
+         match: Annotated[Optional[str], typer.Option(help="only the saved laps whose name contains this")] = None,
+         out: Annotated[Optional[str], typer.Option(help=".gif, or .mp4 (smaller, faster); "
+                                                         "default out/race/<track>.mp4")] = None,
          speedup: Annotated[float, typer.Option(help="playback speed")] = 4.0,
          rerun: Annotated[bool, typer.Option("--rerun", help="3D in the Rerun viewer instead")] = False,
          save: Annotated[Optional[str], typer.Option(help="with --rerun: write this .rrd, don't open")] = None):
@@ -182,6 +203,8 @@ def race(track: Annotated[TrackName, typer.Argument()] = TrackName.michigan2026,
     from kmslap.events.track import TRACK_NAMES
     from kmslap.reporting import birdseye, runs
     laps = runs.load_laps(track.value, label or None)
+    if match:
+        laps = {k: v for k, v in laps.items() if match in k}
     if not laps:
         raise typer.BadParameter(f"no saved laps for {track.value} (run kmslap laptime {track.value})")
     t = TRACK_NAMES[track.value]()
@@ -191,7 +214,8 @@ def race(track: Annotated[TrackName, typer.Argument()] = TrackName.michigan2026,
         from kmslap.reporting.race3d import show
         print(f"wrote {show(laps, t, save)}")
         return
-    birdseye.lap_gif(laps, track=t, out=out, speedup=speedup, title=f"{t.name}: flying laps")
+    out = _into(dirs.out("race", out, f"{track.value}.mp4"))
+    birdseye.lap_gif(laps, track=t, out=str(out), speedup=speedup, title=f"{t.name}: flying laps ({len(laps)})")
     print(f"wrote {out}")
 
 
@@ -200,11 +224,16 @@ def mcap(track: Annotated[TrackName, typer.Argument()] = TrackName.ac18,
          laps: int = 2, grip: float = 0.85,
          margin: Annotated[float, typer.Option(help="m kept between the car's side and the edge / cones")] = 0.35,
          width: Annotated[Optional[float], typer.Option(help="track width, m (michigan2026)")] = None,
-         out: str = "sim.mcap",
-         start: Annotated[Optional[str], typer.Option(help="log start time, ISO (default now)")] = None):
+         out: Out = None,
+         start: Annotated[Optional[str], typer.Option(help="log start time, ISO (default now)")] = None,
+         drivetrain: Annotated[Drivetrain, typer.Option(help="car/drivetrain.py variant: hub motor cars log their "
+                                                             "inverters in their vehicle's DBC")] = "rwd_emrax",
+         soc: Annotated[float, typer.Option(help="pack state of charge")] = 1.0):
     """A simulated log in the car logger's MCAP format (same topics / schemas), for Foxglove."""
     from kmslap.reporting.mcap_log import run
-    run(track.value, laps, grip, margin, width=width, out=out, start=start)
+    name = track.value + ("" if drivetrain.value == "rwd_emrax" else f"_{drivetrain.value}")
+    run(track.value, laps, grip, margin, width=width, out=str(_into(dirs.out("mcap", out, f"{name}.mcap"))),
+        start=start, drivetrain=drivetrain.value, soc=soc)
 
 
 class PackBackend(str, Enum):
@@ -221,7 +250,7 @@ def hil(track: Annotated[TrackName, typer.Argument()] = TrackName.ac18,
         margin: Annotated[float, typer.Option(help="m kept between the car's side and the edge / cones")] = 0.35,
         regen: bool = True,
         realtime: Annotated[bool, typer.Option(help="pace to the wall clock (always, with a cell in the loop)")] = True,
-        port: int = 8765, out: str = "hil",
+        port: int = 8765, out: Out = None,
         can_interface: Annotated[str, typer.Option(help="python-can interface for --pack can")] = "socketcan",
         can_channel: str = "can0",
         autostart: Annotated[bool, typer.Option(help="start a run right away, without Foxglove's Start")] = False,
@@ -229,7 +258,7 @@ def hil(track: Annotated[TrackName, typer.Argument()] = TrackName.ac18,
     """The lap sim with its battery in the loop (a real cell on the rig, or stand-ins), live in Foxglove."""
     from kmslap.hil.runner import HilRunner
     r = HilRunner(track.value, pack.value, laps=laps, grip=grip, margin=margin, regen=regen,
-                  realtime=realtime or pack.value != "sim", port=port, out=out,
+                  realtime=realtime or pack.value != "sim", port=port, out=str(dirs.out("hil", out)),
                   can_interface=can_interface, can_channel=can_channel)
     r.serve(autostart=autostart, once=once)
 
@@ -247,51 +276,51 @@ def torque_bench(car: Annotated[list[Drivetrain], typer.Option("--car", "-c", he
 
 
 @app.command()
-def birdseye(out: str = "birdseye", gif: Annotated[bool, typer.Option(help="also the lap GIF (~1 min)")] = True,
+def birdseye(out: Out = None, gif: Annotated[bool, typer.Option(help="also the lap GIF (~1 min)")] = True,
              drivetrains: Annotated[bool, typer.Option(help="the best preset on each drivetrain variant")] = False):
     """Endurance strategy presets (or drivetrain variants) racing a flying lap on Michigan 2026: GIF + speed map."""
     from kmslap.reporting.birdseye import run
-    run(out, gif=gif, drivetrains=drivetrains)
+    run(_into(dirs.out("birdseye", out)), gif=gif, drivetrains=drivetrains)
 
 
 @app.command()
-def strategy(out: str = "strategy", workers: Workers = None,
+def strategy(out: Out = None, workers: Workers = None,
              regen: Annotated[bool, typer.Option(help="also search regen strategies")] = False,
              remote: Remote = [],
              soc_floor: Annotated[float, typer.Option(help="SOC reserve the event must end above")] = 0.10):
     """Tune pace, lift-and-coast, DRS (and regen) for the fastest finishing event."""
     from kmslap.strategy import run
-    run(out, workers, regen, remote, soc_floor)
+    run(_into(dirs.out("strategy", out)), workers, regen, remote, soc_floor)
 
 
 @app.command()
 def bench(what: Bench, n: Annotated[int, typer.Option(help="strategy evaluations")] = 96,
-          workers: Workers = None, remote: Remote = [], out: str = "bench"):
+          workers: Workers = None, remote: Remote = [], out: Out = None):
     """Benchmarks: single-thread timings, parallel throughput, or the cluster."""
     from kmslap.ops.bench import record
-    record(what.value, n, workers, remote, out)
+    record(what.value, n, workers, remote, _into(dirs.out("bench", out)))
 
 
 @app.command()
-def dyno(out: str = "dyno"):
+def dyno(out: Out = None):
     """Dyno pulls vs the inverter logs and the motor model (validation.dyno)."""
     from kmslap.validation.dyno import run_all
-    run_all(out)
+    run_all(_into(dirs.out("dyno", out)))
 
 
 @app.command()
-def aero(out: str = "aero"):
+def aero(out: Out = None):
     """2024 aero tests: CdA from coast-downs, ClA and balance from shock pots (validation.aero)."""
     from kmslap.validation.aero import run
-    run(out)
+    run(_into(dirs.out("aero", out)))
 
 
 @app.command("pack-temps")
-def pack_temps(out: str = "pack",
+def pack_temps(out: Out = None,
                gif: Annotated[bool, typer.Option(help="also render the top-down heatmap GIFs (~1 min)")] = True):
     """KS6e accumulator thermal tests: top-down heatmaps, lumped model fit (validation.pack_thermal)."""
     from kmslap.validation.pack_thermal import run
-    run(out, gif)
+    run(_into(dirs.out("pack-temps", out)), gif)
 
 
 # --- remote ---------------------------------------------------------------------------

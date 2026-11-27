@@ -222,7 +222,7 @@ acceleration, required to be stable (no drifts the driver would have to catch).
 `envelope.speed_profile(path, env)` turns it into a speed target along a path (90% of the
 envelope by default: what the driver holds in steady cornering in the time-domain model).
 The envelope takes ~2 minutes and is cached in `build/envelope/`.
-`kmslap drive --out drive.png` plots a skidpad and a short course. With straight
+`kmslap drive` plots a skidpad and a short course. With straight
 steering it reproduces the accel model's times; the tests check steady cornering, left/right
 symmetry, pack charge and heat bookkeeping and the diff.
 
@@ -236,7 +236,7 @@ The pack discharges and heats (I²R, passive cooling only) and its BMS undervolt
 cuts power as it empties, so a car that uses too much energy slows and stops short.
 
 ```sh
-kmslap endurance --out endurance.png
+kmslap endurance                 # out/endurance/endurance.png
 # wing closed, wing set open by hand, DRS, wing closed + lift-and-coast
 ```
 
@@ -262,7 +262,7 @@ top of the friction brakes (from the front/rear pressure sensors), capped by
 The C++ controller only handles drive torque so far: regen commands go straight to the
 inverter.
 
-**Strategy tuning:** `kmslap strategy --out strategy/ [--regen]` searches pace
+**Strategy tuning:** `kmslap strategy [--regen]` (into `out/strategy/`) searches pace
 (fraction of the grip envelope), lift-and-coast, DRS policy parameters and (with
 `--regen`) regen strategies for the fastest event that still finishes with a 10% SOC
 reserve. Candidates are scored on 2 laps projected to the event (energy from the cells
@@ -297,10 +297,10 @@ steers out the body slip the line is driven with and runs wide.
 kmslap laptime ac18 --grip 0.85 --margin 0.35   # solve (~5-7 min, cached), drive, score, save the lap
 kmslap laptime michigan2026 --width 7           # the 2026 line at another guessed width
 kmslap laptime michigan2026 --drivetrain 4wd_dti --torque-mode qp   # a drivetrain variant's lap
-kmslap race ac18                                # every saved lap racing: race.mp4 (or --out race.gif)
+kmslap race ac18                                # every saved lap racing: out/race/ac18.mp4 (or --out race.gif)
 kmslap race ac18 --rerun                        # the same in 3D in Rerun, with plots on the timeline
 # the solves are heavy: run them on the desktop and bring the laps back
-kmslap remote run --fetch build/runs --fetch build/mintime -- kmslap laptime ac18 --margin 0.35
+kmslap remote run --fetch out/laps --fetch build/mintime -- kmslap laptime ac18 --margin 0.35
 ```
 
 Flying laps at 85% grip, driven in the time-domain car (`kmslap laptime`, Nov 2026):
@@ -322,12 +322,12 @@ have); the driver gains don't close it.
 
 Laps are scored for FSAE penalties: a cone hit is 2 s (a cone within its base radius of
 the car's footprint); off course is 20 s (all four tires outside the edges). Every
-driven lap can be saved (`reporting/runs.py`, `build/runs/<track>/`: the time series
+driven lap can be saved (`reporting/runs.py`, `out/laps/<track>/`: the time series
 plus lap time, penalties and settings) and raced against the others (`kmslap race`).
 
 ### Simulated car logs (Foxglove)
 
-`kmslap mcap ac18 --out sim/ac18.mcap` drives the track's minimum-time plan and writes
+`kmslap mcap ac18` (into `out/mcap/ac18.mcap`; `--drivetrain 4wd_dti` for a hub motor car, its inverters in its vehicle's DBC: `cardata/mcap/README.md`) drives the track's minimum-time plan and writes
 the run as the car's logger would record it on the current car: every simulated sensor
 mapped to its message in the latest DBC (`ksu-ms-dbc` `main`), each value put through
 the DBC as a CAN frame would be, in the logger's topics (`<message>_data`) and protobuf
@@ -373,11 +373,11 @@ kmslap hil ac18 --pack can --can-channel can0    # the real rig
 kmslap hil ac18 --autostart --once --no-realtime # one run, headless
 ```
 
-Connect Foxglove to `ws://localhost:8765` and import `hil/hil.layout.json`: the car on
+Connect Foxglove to `ws://localhost:8765` and import `out/hil/hil.layout.json`: the car on
 the track (isometric, following it), a map, gauges (cell current, voltage, temperature,
 SoC, pack power, speed), run and rig state, Start / Stop / Reset / Abort buttons (Foxglove
 service calls), and plots of the cell, the car and the loop's latency. Each run is saved
-to `hil/*.mcap`: the car's sensors in the logger's format plus the `/hil` topics.
+to `out/hil/*.mcap`: the car's sensors in the logger's format plus the `/hil` topics.
 
 How the cell gets into the car model: the model's pack (open-circuit voltage from SOC,
 resistance from temperature) can take both from outside (`pack_ext`; off, the model is
@@ -459,7 +459,7 @@ power-on sine steer (body slip: does it spin), `-p key=value` for a controller s
 | awd_emrax_dti yaw | 3.659 | 1.305 | 3.8 |
 | awd_emrax_dti qp | 3.590 | 1.374 | 7.6 |
 
-`kmslap report --out report/` runs the headline sims and writes a drag race GIF
+`kmslap report` (into `out/report/`; CI passes `--out report`) runs the headline sims and writes a drag race GIF
 (rear wheels colored by slip), launch / final drive / robustness / controller-vs-truth /
 system ID / gear ratio check / sensitivity ("what to measure next": seconds of accel time
 each uncertain coefficient is worth) plots, a `summary.md` and a `metrics.json`. CI runs it on
@@ -478,9 +478,9 @@ The Rerun viewer sends anonymous usage stats by default (features used, not your
 
 ```sh
 kmslap remote setup       # once: checks git + nix, clones, builds the env
-kmslap remote run --fetch strategy -- kmslap strategy --regen --out strategy
-kmslap remote run --detach --fetch strategy -- kmslap strategy --out strategy
-kmslap remote log         # follow a detached job; then: fetch strategy
+kmslap remote run --fetch out/strategy -- kmslap strategy --regen
+kmslap remote run --detach --fetch out/strategy -- kmslap strategy
+kmslap remote log         # follow a detached job; then: fetch out/strategy
 ```
 
 It snapshots tracked files including uncommitted edits (`git stash create`, your branch
@@ -508,9 +508,9 @@ progress, throughput, ETA); `save_timeline()` plots every task on every worker a
 CPU load.
 
 ```sh
-kmslap strategy --regen --out strategy --remote mathewos@desktop-17id03o-2
+kmslap strategy --regen --remote mathewos@desktop-17id03o-2
 kmslap cluster selftest --remote mathewos@desktop-17id03o-2   # try the dashboard
-kmslap bench single|parallel|cluster --out bench/             # benchmarks
+kmslap bench single|parallel|cluster                          # benchmarks: out/bench/
 ```
 
 Benchmarks (Nov 2026): the laptop (Ryzen 5 7640U, 12 threads) runs single sims ~25%
@@ -590,7 +590,8 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 |---|---|
 | `kmslap/` | the package (see the table at the top) |
 | `controller/` | VCU launch/traction controller (C++), Makefile for sim and Teensy builds |
-| `build/` | generated, gitignored: the compiled CasADi model |
+| `out/` | what the commands make, gitignored: one folder per command (`out/report/`, `out/race/`, `out/birdseye/`, ...; a command's `--out` writes elsewhere), and the saved laps `kmslap race` races (`out/laps/<track>/`). Each command prints `output: <path>` as it starts |
+| `build/` | caches, gitignored and safe to delete: compiled CasADi models, grip envelopes, lap plans, racing lines, tire tables |
 | `tests/` | pytest suite |
 | `accel_sim.ipynb` | main accel notebook |
 | `tracks/` | tracks (GeoJSON): the FSAE Michigan 2026 EV endurance line, the Assetto Corsa Michigan cone course |

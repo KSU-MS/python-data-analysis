@@ -238,17 +238,23 @@ def gg_envelope(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | s
     sol = np.full((len(speeds), n_angles, len(VARIABLES)), np.nan)
     ok = np.zeros((len(speeds), n_angles), bool)
     starts = _STARTS if car.hub_front or car.hub_rear else _STARTS[:3]
-    for i, v in enumerate(speeds):
-        guess = None
-        for j, th in enumerate(angles):
-            # the problem isn't convex: start from the neighbouring angle's solution
-            # and from each regime's guess, keep the best that converged
-            for start in ([guess] if guess is not None else []) + starts:
-                res = solver(x0=start, p=[v, math.cos(th), math.sin(th)], **bounds)
-                xs = np.array(res["x"]).ravel()
-                if solver.stats()["success"] and not (ok[i, j] and xs[-1] <= rho[i, j]):
-                    rho[i, j], sol[i, j], ok[i, j] = xs[-1], xs, True
-            guess = sol[i, j] if ok[i, j] else None
+    from kmslap import progress
+    from kmslap.car.drivetrain import name_of
+    with progress.task(f"{name_of(car)}: grip envelope, steady-state double-track "
+                       f"({len(speeds)} speeds x {n_angles} directions, Ipopt)", total=len(speeds) * n_angles) as task:
+        for i, v in enumerate(speeds):
+            guess = None
+            for j, th in enumerate(angles):
+                # the problem isn't convex: start from the neighbouring angle's solution
+                # and from each regime's guess, keep the best that converged
+                for start in ([guess] if guess is not None else []) + starts:
+                    res = solver(x0=start, p=[v, math.cos(th), math.sin(th)], **bounds)
+                    xs = np.array(res["x"]).ravel()
+                    if solver.stats()["success"] and not (ok[i, j] and xs[-1] <= rho[i, j]):
+                        rho[i, j], sol[i, j], ok[i, j] = xs[-1], xs, True
+                guess = sol[i, j] if ok[i, j] else None
+                task.advance()
+            task.note(f"{v:.0f} m/s")
     # a point no start converged: from its neighbours at that speed (still marked)
     for i in range(len(speeds)):
         good = ok[i]

@@ -29,7 +29,6 @@ The 2023 file came with a third export (DJDataExport_DYNORUN_015) that is the 20
 pull again, raw; it's in legacy/dynoruns/ with an empty summary-only export.
 """
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -244,9 +243,8 @@ def plot(c: Comparison, path):
     plt.close(fig)
 
 
-def run_all(out: str = "dyno") -> list[dict]:
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
+def run_all(out: str | None = None) -> list[dict]:
+    out = dirs.out("dyno", out)          # None: out/dyno
     rows = []
     for name in RUNS:
         c = compare(name)

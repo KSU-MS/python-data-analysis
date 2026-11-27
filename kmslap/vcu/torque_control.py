@@ -71,6 +71,8 @@ class VehicleState:
     bus_v: float               # V
     ay: float | None = None    # m/s^2, + left (filtered); None: vx * yaw_rate
     fz: tuple | None = None    # wheel loads fl, fr, rl, rr, N: load cells, if fitted
+    plan: tuple | None = None  # a planned (road wheel angle, yaw rate) here: the yaw target
+                               # is the plan's, plus the steer's away from the plan's
 
 
 class TorqueController:
@@ -160,13 +162,15 @@ class TorqueController:
         if t_map > 0:
             return t_map / self.motor.peak_torque * cap_total
         lift = t_map * c.final_drive / c.driveline_eff              # EMRAX-equivalent at the wheels
-        return lift - self.regen.brake_fraction * s.brake * c.max_brake_torque
+        return (lift - self.regen.brake_fraction * self.regen.hydraulic(s.brake) * c.max_brake_torque
+                - self.regen.travel_fraction(s.brake) * cap_total)
 
     def _yaw_moment(self, s: VehicleState, ay_cap: float | None = None):
         """ay_cap: m/s^2 the yaw rate target is capped at (ay = v r); None: mu_yaw g."""
         c = self.car
         v = max(s.vx, 1.0)
-        ref = v * s.steer / (c.wheelbase + self.k_us * v * v)
+        gain = v / (c.wheelbase + self.k_us * v * v)
+        ref = gain * s.steer if s.plan is None else s.plan[1] + gain * (s.steer - s.plan[0])
         cap = (ay_cap if ay_cap is not None else self.mu_yaw * G) / v
         ref = min(max(ref, -cap), cap)
         err = ref - s.yaw_rate
@@ -321,14 +325,17 @@ class TorqueController:
             d = m[i] - share[i] * one                      # wheel torque - its share of the total
             h += 2 * w_d / a_n ** 2 * np.outer(d, d)
         h += 1e-6 * w_s / a_n ** 2 * np.eye(5)          # the diff's null direction (AWD)
-        # bounds: each motor's limits; while driving and turning, a little regen inside
+        # bounds: each motor's limits; while driving and turning, a little regen inside;
+        # braking on the pedal's regen travel, any motor may drive while others generate
+        # (their net is the driver's, EV.3.1.3): torque vectoring braking
         turning = abs(mz_des) > 50.0 and s.vx > 2.0
         lbx, ubx = np.zeros(5), np.zeros(5)
         for i, w in enumerate(WHEELS):
             if not self.hubs[w]:
                 continue
             inside = min(self.inside_regen * c.hub_ratio * c.hub_gear_eff, cap[w]) if turning else 0.0
-            lbx[i], ubx[i] = (-inside, cap[w]) if ask >= 0 else (-cap[w], 0.0)
+            mixed = self.regen is not None and self.regen.regen_travel > 0
+            lbx[i], ubx[i] = (-inside, cap[w]) if ask >= 0 else (-cap[w], cap[w] if mixed else 0.0)
         lbx[4], ubx[4] = ((0.0, central_cap * (1.0 - self.oversteer_cut * oversteer)) if ask >= 0
                           else (-central_cap, 0.0))
         # rows: the driver's torque (= 0 coasting), electrical power, each wheel's grip,

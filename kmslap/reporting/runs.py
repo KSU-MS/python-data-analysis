@@ -5,7 +5,7 @@ driver or strategy.
     save_lap("ac18", "min-time (double track)", df, t_start, t_end, lap_time=..., ...)
     laps = load_laps("ac18")          # {label: lap DataFrame}, in the order saved
 
-Each lap is build/runs/<track>/<slug>.csv.gz (time from the lap's start line, distance
+Each lap is out/laps/<track>/<slug>.csv.gz (time from the lap's start line, distance
 along it, position, heading, speed, inputs, body slip, what the car is doing) with
 <slug>.json beside it (label, when, and whatever metadata the caller gives: lap time,
 penalties, settings).
@@ -19,7 +19,7 @@ import pandas as pd
 
 from kmslap import dirs
 
-RUNS = dirs.BUILD / "runs"
+RUNS = dirs.LAPS
 COLUMNS = ["t_lap", "dist", "X", "Y", "psi", "speed", "beta", "r", "ax", "ay", "steering_wheel",
            "pedal", "brake", "motor_torque", "drs", "soc", "pack_temp", "mode"]
 

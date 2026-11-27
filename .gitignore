@@ -6,14 +6,9 @@ __pycache__/
 controller/build/
 build/
 .venv/
-report/
-bench/
-/dyno/
-/pack/
-/strategy/
-/aero/
-/sim/
-/hil/
+# the commands' outputs (kmslap/dirs.py), and CI's report (kmslap report --out report)
+/out/
+/report/
 
 # DTI kit documents (public on DTI's site): the large ones stay local
 /datasheets/DTI F-SiC Documents/*.exe

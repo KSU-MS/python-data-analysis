@@ -128,6 +128,14 @@ VARIANTS = {
 }
 
 
+def name_of(car: Car) -> str:
+    """The VARIANTS name of the car's drivetrain ("custom" if none matches)."""
+    for name, v in VARIANTS.items():
+        if all(getattr(car, k) == x for k, x in v.items()):
+            return name
+    return "custom"
+
+
 def mass_breakdown(name: str, base: Car = None) -> dict:
     """The variant's mass, weight split and CG height from the current car's, part by
     part: {"removed": [...], "added": [...], "mass", "front_weight", "cg_height"}."""

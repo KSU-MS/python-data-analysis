@@ -50,7 +50,8 @@ WHEELS = ("fl", "fr", "rl", "rr")
 STATES = (["X", "Y", "psi", "vx", "vy", "r"] + [f"omega_{w}" for w in WHEELS]
           + [f"kappa_{w}" for w in WHEELS] + [f"alpha_{w}" for w in WHEELS]
           + ["ax_filt", "ay_filt", "t_lagged", "bus_v", "soc", "pack_temp"]
-          + [f"hub_t_{w}" for w in WHEELS])                  # hub motors' lagged torque
+          + [f"hub_t_{w}" for w in WHEELS]                   # hub motors' lagged torque
+          + ["charge_peak_used"])                            # s of the pack's charge peak used
 INPUTS = ["torque_cmd", "steer", "brake_torque", "drs"] + [f"hub_cmd_{w}" for w in WHEELS]
 OUTPUTS = (["ax", "ay"] + [f"fx_{w}" for w in WHEELS] + [f"fy_{w}" for w in WHEELS]
            + [f"fz_{w}" for w in WHEELS]
@@ -68,7 +69,8 @@ PARAMS = CAR_PARAMS + ["relaxation_length", "relaxation_length_lat", "tire_scale
                        "rotor_inertia", "pack_series", "pack_capacity_ah", "pack_resistance_25c",
                        "pack_max_current", "pack_thermal_mass", "pack_h_a", "pack_ambient_c",
                        "pack_resistance_temp_coeff", "pack_v_cell_min", "pack_v_cell_max",
-                       "pack_max_charge_current", "regen_enabled", "regen_max_torque",
+                       "pack_max_charge_current", "pack_peak_charge_current", "pack_peak_charge_s",
+                       "regen_enabled", "regen_max_torque",
                        "pack_ext", "pack_ext_v_oc", "pack_ext_r",
                        "central_drive"] + [f"hub_{w}" for w in WHEELS] + [
                        "hub_ratio", "hub_gear_eff", "hub_rotor_inertia", "dt"]
@@ -90,6 +92,7 @@ def params(car: Car, motor: MotorMap, pack: Pack, tire, *, relaxation_length: fl
              pack_h_a=pack.h_a, pack_ambient_c=pack.ambient_c,
              pack_resistance_temp_coeff=pack.resistance_temp_coeff, pack_v_cell_min=pack.v_cell_min,
              pack_v_cell_max=pack.v_cell_max, pack_max_charge_current=pack.max_charge_current,
+             pack_peak_charge_current=pack.peak_charge_current, pack_peak_charge_s=pack.peak_charge_s,
              regen_enabled=0.0 if regen is None else 1.0,
              regen_max_torque=0.0 if regen is None else regen.max_torque,
              pack_ext=0.0, pack_ext_v_oc=0.0, pack_ext_r=0.0,
@@ -199,7 +202,12 @@ def step_function(motor: MotorMap, tire, pack: Pack, hub_kind: str = "dti") -> c
     # pack: P = V I with V = Voc - I R, I < 0; BMS limits charge current and the
     # loaded cell voltage
     i_req = (v_oc - ca.sqrt(v_oc * v_oc - 4 * r_pack * p_dc)) / (2 * r_pack)
-    i_floor = ca.fmax(-p["pack_max_charge_current"],
+    # the BMS's charge current limit: the cells' peak while the peak's time lasts (used
+    # up charging above the continuous rating, recovering at a tenth of that rate,
+    # ESTIMATE), then the continuous rating; an external pack (HIL) keeps its continuous
+    i_chg_max = ca.if_else(ca.logic_and(p["pack_ext"] <= 0, x["charge_peak_used"] < p["pack_peak_charge_s"]),
+                           p["pack_peak_charge_current"], p["pack_max_charge_current"])
+    i_floor = ca.fmax(-i_chg_max,
                       ca.fmin(0, (v_oc - p["pack_series"] * p["pack_v_cell_max"]) / r_pack))
     i_gen = ca.fmax(i_req, i_floor)
     t_gen = ca.if_else(i_req < i_floor,
@@ -237,7 +245,7 @@ def step_function(motor: MotorMap, tire, pack: Pack, hub_kind: str = "dti") -> c
     scale_m = ca.if_else(p_drive > 1e-6, ca.fmin(1, ca.fmin(p["power_limit"], p_del + ca.fmax(-ca.fmin(p_tot, 0), 0))
                                                          / ca.fmax(p_drive, 1e-6)), 1)
     i_chg = (v_oc - ca.sqrt(ca.fmax(v_oc * v_oc - 4 * r_pack * ca.fmin(p_tot, 0), 0))) / (2 * r_pack)
-    i_floor_h = ca.fmax(-p["pack_max_charge_current"],
+    i_floor_h = ca.fmax(-i_chg_max,
                         ca.fmin(0, (v_oc - p["pack_series"] * p["pack_v_cell_max"]) / r_pack))
     scale_r = ca.if_else(i_chg < i_floor_h, i_floor_h / ca.fmin(i_chg, -1e-9), 1)
     for w in WHEELS:
@@ -324,6 +332,8 @@ def step_function(motor: MotorMap, tire, pack: Pack, hub_kind: str = "dti") -> c
         * dt / (p["pack_capacity_ah"] * 3600),
         pack_temp=x["pack_temp"] + dt * (heat - p["pack_h_a"] * (x["pack_temp"] - p["pack_ambient_c"]))
         / p["pack_thermal_mass"],
+        charge_peak_used=_clamp(x["charge_peak_used"] + dt * ca.if_else(current < -p["pack_max_charge_current"], 1.0, -0.1),
+                                0, p["pack_peak_charge_s"] + 0.1),
     )
     out = ([ax, ay] + [fx[w] for w in WHEELS] + [fy[w] for w in WHEELS] + [fz[w] for w in WHEELS]
            + [torque, current, omega_m * model.RPM_PER_RADS, drag, 2 * t_diff, heat, v_oc, r_pack]

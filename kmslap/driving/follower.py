@@ -83,6 +83,13 @@ class PathFollower:
     # brake feel with regen blending: braking torque per unit pedal is this much more
     # than the friction brakes' (a driver adapts to the pedal). 0 = no blending.
     brake_regen_fraction: float = 0.0
+    # a brake pedal whose first travel is regen only (RegenPolicy.regen_travel): braking
+    # on regen first, the hydraulics for the rest. regen_wheel_torque: N m at the wheels
+    # the end of that travel asks for; regen_power: W at the wheels the pack takes
+    # (0: no limit), so the regen there is less at speed
+    regen_travel: float = 0.0
+    regen_wheel_torque: float = 0.0
+    regen_power: float = 0.0
     # pedal map with regen at its bottom (RegenPolicy.lift_torque, Nm): the driver's
     # feedforward inverts it. 0 = the plain map.
     pedal_regen_torque: float = 0.0
@@ -93,6 +100,7 @@ class PathFollower:
     _integral: float = 0.0
     _lat_integral: float = 0.0
     _t_last: float | None = None
+    plan_ff: tuple | None = None     # the plan's (steer, yaw rate) here, None without a plan
 
     @classmethod
     def for_plan(cls, plan, car: Car = None, **kw) -> "PathFollower":
@@ -100,10 +108,22 @@ class PathFollower:
         slip and yaw rate as feedforward. With the plan's steer the feedback is only a
         correction, so it can be stiffer (and the steer isn't previewed: the plan's
         steer already leads its path); these gains tracked the Michigan 2026 plan best
-        (to ~0.25 m median, no penalties)."""
+        (to ~0.25 m median, no penalties).
+
+        A car with hub motors: the pedal asks for a fraction of all its motors' torque
+        (vcu/torque_control), so the pedal feedforward is scaled to it, and the
+        acceleration is allowed up to the plan's (front drive accelerates harder)."""
+        car = car or Car()
         opts = dict(steer_ff=plan.steer_ff, beta_ff=plan.beta_ff, yaw_ff=plan.yaw_ff,
                     steer_preview=0.0, k_lateral=0.08, k_heading=1.0)
-        return cls(plan.line, speed=plan.v, car=car or Car(), **{**opts, **kw})
+        if car.hub_front or car.hub_rear:
+            from kmslap.car.drivetrain import HubMotor
+            n_hub = 2 * car.hub_front + 2 * car.hub_rear
+            wheel = (n_hub * HubMotor(car.hub_motor).peak_torque * car.hub_ratio * car.hub_gear_eff
+                     + (cls.peak_torque * car.final_drive * car.driveline_eff if car.central_drive else 0.0))
+            opts.update(peak_torque=wheel / (car.final_drive * car.driveline_eff),
+                        accel_max=max(cls.accel_max, float(np.max(plan.u["ax"]))))
+        return cls(plan.line, speed=plan.v, car=car, **{**opts, **kw})
 
     def __post_init__(self):
         n = len(self.path.s)
@@ -141,6 +161,8 @@ class PathFollower:
         j = p.ahead(i, self.steer_preview * vx)
         delta_ff = self.car.wheelbase * p.k[j] if self.steer_ff is None else self.steer_ff[j]
         yaw_ref = vx * p.k[i] if self.yaw_ff is None else self.yaw_ff[i]
+        if self.yaw_ff is not None and self.steer_ff is not None:       # for the torque vectoring
+            self.plan_ff = (self.steer_ff[j], self.yaw_ff[i])
         fb = (self.k_lateral * e_lat + self.k_heading * e_head
               + self.k_yaw * (obs["r"] - yaw_ref) + self._lat_integral)
         delta = delta_ff - fb
@@ -163,7 +185,17 @@ class PathFollower:
         motor = force * c.tire_radius / (c.final_drive * c.driveline_eff)
         lift = self.pedal_regen_torque
         pedal = max(0.0, (motor + lift) / (self.peak_torque + lift))
-        brake = max(0.0, -force * c.tire_radius / (c.max_brake_torque * (1 + self.brake_regen_fraction)))
+        brake_t = -force * c.tire_radius
+        if self.regen_travel > 0 and brake_t > 0:
+            avail = self.regen_wheel_torque
+            if self.regen_power > 0:
+                avail = min(avail, self.regen_power * c.tire_radius / max(vx, 1.0))
+            if brake_t <= avail:
+                brake = self.regen_travel * brake_t / self.regen_wheel_torque
+            else:                                        # past the regen travel: all of it, + hydraulics
+                brake = self.regen_travel + (1 - self.regen_travel) * (brake_t - avail) / c.max_brake_torque
+        else:
+            brake = max(0.0, brake_t / (c.max_brake_torque * (1 + self.brake_regen_fraction)))
         lr = c.front_weight * c.wheelbase
         rear_slip = abs(math.atan2(obs["vy"] - obs["r"] * lr, max(vx, 0.5)))
         lo, hi = self.slide_lift

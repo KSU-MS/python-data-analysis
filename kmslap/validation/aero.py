@@ -27,7 +27,6 @@ downforce, read somewhat high.
 Speeds only reached ~19 m/s, so these rest on 7-19 m/s; there was no DRS test.
 """
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -162,15 +161,14 @@ def downforce(data: pd.DataFrame, mass: float, cg_height: float, wheelbase: floa
     return Downforce(cpn, cla, cla_se, d[steady])
 
 
-def run(out: str = "aero") -> dict:
+def run(out: str | None = None) -> dict:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     from kmslap.car.params import Car
 
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = dirs.out("aero", out)          # None: out/aero
     car = Car()
     data = pd.concat([load(n) for n in runs()], ignore_index=True)
     drag = coastdown(data, car.mass)

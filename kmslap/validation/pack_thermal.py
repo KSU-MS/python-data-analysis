@@ -171,7 +171,10 @@ def heatmap_gif(d: pd.DataFrame, path, title: str, frames: int = 120, fps: int =
 
     draw(0)
     fig.tight_layout()
-    FuncAnimation(fig, draw, frames=len(idx)).save(path, writer=PillowWriter(fps=fps))
+    from kmslap import progress
+    with progress.task(f"rendering {Path(path).name}", total=len(idx)) as task:
+        FuncAnimation(fig, draw, frames=len(idx)).save(path, writer=PillowWriter(fps=fps),
+                                                        progress_callback=lambda i, n: task.update(completed=i + 1))
     plt.close(fig)
 
 
@@ -210,9 +213,8 @@ def summary_plot(data: dict, fits: dict, path):
     plt.close(fig)
 
 
-def run(out: str = "pack", gif: bool = True) -> dict:
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
+def run(out: str | None = None, gif: bool = True) -> dict:
+    out = dirs.out("pack-temps", out)          # None: out/pack-temps
     data = {name: load(name) for name in TESTS}
     fits = {name: fit(name, d) for name, d in data.items()}
     summary_plot(data, fits, out / "pack_thermal.png")

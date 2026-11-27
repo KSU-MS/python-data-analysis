@@ -104,14 +104,116 @@ NOT_SIMULATED = ["acu_shutdown_status", "acu_board_voltage_readings", "vcu_board
                  "M193 / M194 (parameter access)", "BMS_Current_Limit", "Status"]
 
 
+# hub motor inverters (car.hub_front / hub_rear), per wheel: inv_<wheel>_<message> in the
+# vehicle's DBC (ksu-ms-dbc gen_tool/vehicles.json; cardata/mcap/vehicles/<drivetrain>/)
+HUB_SENSORS = {
+    "dti": {
+        "erpm_duty_voltage": (100, "estimate", "electrical rpm (4 pole pairs), duty from speed (ESTIMATE), DC input voltage"),
+        "ac_dc_current":     (100, "estimate", "AC current peak (sqrt 2 x torque / kt, 0.492 N m/A rms), DC current from the motor's power"),
+        "foc":               (100, "estimate", "Iq as the AC current peak, Id 0"),
+        "temperatures":      (10, "estimate", "NOT SIMULATED: controller 35 C, motor 45 C held; fault code 0"),
+        "misc":              (10, "estimate", "drive enable, no limits active, CAN map version 2.5"),
+        "setaccurrent":      (100, "estimate", "the VCU's command: AC current peak for its torque (+ drive, - regen)"),
+        "setdriveenable":    (10, "estimate", "the VCU's drive enable"),
+    },
+    "amk": {
+        "actual_values_1":   (200, "estimate", "status (ready, HV and controller enabled), speed, torque current raw (ESTIMATE: in proportion to torque, 16384 at the motor's peak torque)"),
+        "actual_values_2":   (200, "estimate", "NOT SIMULATED: motor 45 C, cold plate 35 C, IGBT 40 C held; diagnostic 0"),
+        "setpoints_1":       (100, "estimate", "the VCU's command (speed mode with torque limits): 45 m/s setpoint with the positive limit, or 0 rpm with the negative limit for regen, in 0.1 % MN (9.8 N m)"),
+    },
+}
+CASCADIA = ["M165_Motor_Position_Info", "M166_Current_Info", "M167_Voltage_Info", "M168_Flux_ID_IQ_Info",
+            "M170_Internal_States", "M172_Torque_And_Timer_Info", "M173_Modulation_And_Flux_Info",
+            "M192_Command_Message"]
+
+
+def hub_wheels(car: Car) -> list:
+    return [w for w in ("fl", "fr", "rl", "rr") if (car.hub_front if w[0] == "f" else car.hub_rear)]
+
+
+def sensors(car: Car) -> dict:
+    """SENSORS for this car: without the EMRAX's Cascadia on a car without a central
+    motor, with each hub motor's inverter messages."""
+    out = {k: v for k, v in SENSORS.items() if car.central_drive or k not in CASCADIA}
+    for w in hub_wheels(car):
+        for msg, v in HUB_SENSORS[car.hub_motor].items():
+            out[f"inv_{w}_{msg}"] = v
+    if hub_wheels(car):
+        out["vcu_motor_torque_commands"] = (100, "estimate", "the VCU's torque command for each hub motor")
+    return out
+
+
+def vehicle_dir(car: Car):
+    """The car's DBC and logger schema: the current car's (main), or its drivetrain
+    variant's (cardata/mcap/vehicles/, built from ksu-ms-dbc's vehicle DBCs)."""
+    from kmslap.car.drivetrain import name_of
+    name = name_of(car)
+    return DIR if name == "rwd_emrax" else DIR / "vehicles" / name
+
+
+def _hub_signals(d: pd.DataFrame, car: Car) -> dict:
+    """Each hub motor's inverter messages (DTI HV500 or AMK KW26), from the motor's
+    torque, speed and power and the VCU's command."""
+    from kmslap.car.drivetrain import HubMotor, motor_sheet
+    hub = HubMotor(car.hub_motor)
+    sheet = motor_sheet(car.hub_motor)
+    n = len(d)
+    running = (d.t >= 0).to_numpy()
+    bus_v = d.bus_v.to_numpy()
+    sig = {}
+    cmds = {}
+    for w in hub_wheels(car):
+        torque = d[f"hub_torque_{w}"].to_numpy()
+        cmd = d[f"hub_cmd_{w}"].to_numpy() if f"hub_cmd_{w}" in d else torque
+        cmds[w] = cmd
+        omega = d[f"omega_{w}"].to_numpy() * car.hub_ratio            # motor rad/s
+        rpm = omega * 60 / (2 * np.pi)
+        eff = hub.efficiency(rpm, torque)
+        p_elec = np.where(torque >= 0, torque * omega / eff, torque * omega * eff)
+        dc = p_elec / np.maximum(bus_v, 1.0)
+        if car.hub_motor == "dti":
+            kt, pp = sheet["torque_constant_nm_per_arms"], sheet["pole_pairs"]
+            i_pk = np.sqrt(2) * torque / kt
+            sig[f"inv_{w}_erpm_duty_voltage"] = dict(Actual_ERPM=rpm * pp, Actual_InputVoltage=bus_v,
+                                                     Actual_Duty=np.clip(100 * rpm / hub.max_rpm, -100, 100))
+            sig[f"inv_{w}_ac_dc_current"] = dict(Actual_ACCurrent=i_pk, Actual_DCCurrent=dc)
+            sig[f"inv_{w}_foc"] = dict(Actual_FOC_iq=i_pk, Actual_FOC_id=np.zeros(n))
+            sig[f"inv_{w}_temperatures"] = dict(Actual_TempController=np.full(n, 35.0), Actual_TempMotor=np.full(n, 45.0),
+                                                Actual_FaultCode=np.zeros(n))
+            sig[f"inv_{w}_misc"] = dict(Drive_enable=running.astype(float), CAN_map_version=np.full(n, 2.5))
+            sig[f"inv_{w}_setaccurrent"] = dict(CMD_TargetAcCurrent=np.where(running, np.sqrt(2) * cmd / kt, 0.0))
+            sig[f"inv_{w}_setdriveenable"] = dict(CMD_DriveEnable=running.astype(float))
+        else:
+            mn = sheet["nominal_torque_nm"]
+            # ESTIMATE: torque current in proportion to torque, the converter's peak at the motor's peak
+            raw_iq = torque / hub.peak_torque * 16384
+            speed_set = 45.0 / car.tire_radius * car.hub_ratio * 60 / (2 * np.pi)
+            sig[f"inv_{w}_actual_values_1"] = dict(
+                system_ready=np.ones(n), error=np.zeros(n), warning=np.zeros(n), quit_dc_on=running, dc_on=running,
+                quit_inverter_on=running, inverter_on=running, derating=np.zeros(n), actual_velocity=rpm,
+                torque_current=np.clip(raw_iq, -32768, 32767), magnetizing_current=np.zeros(n))
+            sig[f"inv_{w}_actual_values_2"] = dict(temp_motor=np.full(n, 45.0), temp_inverter=np.full(n, 35.0),
+                                                   error_info=np.zeros(n), temp_igbt=np.full(n, 40.0))
+            sig[f"inv_{w}_setpoints_1"] = dict(
+                inverter_on=running, dc_on=running, enable=running, error_reset=np.zeros(n),
+                target_velocity=np.where(running & (cmd > 0), speed_set, 0.0),
+                torque_limit_positive=np.where(running, np.maximum(cmd, 0) / mn * 100, 0.0),
+                torque_limit_negative=np.where(running, np.minimum(cmd, 0) / mn * 100, 0.0))
+    if cmds:
+        sig["vcu_motor_torque_commands"] = {f"vcu_motor_torque_{w}": cmds.get(w, np.zeros(n))
+                                            for w in ("fl", "fr", "rl", "rr")}
+    return sig
+
+
 def _profile():
     return json.loads((DIR / "log_profile.json").read_text())
 
 
-def _protos():
-    """{message name: class} from the logs' descriptor set."""
+def _protos(folder=None):
+    """{message name: class} from the logs' descriptor set (the current car's, or a
+    vehicle folder's)."""
     from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
-    fds = descriptor_pb2.FileDescriptorSet.FromString((DIR / "hytech.bin").read_bytes())
+    fds = descriptor_pb2.FileDescriptorSet.FromString(((folder or DIR) / "hytech.bin").read_bytes())
     pool = descriptor_pool.DescriptorPool()
     for f in fds.file:
         pool.Add(f)
@@ -259,14 +361,28 @@ def sensor_signals(d: pd.DataFrame, track, car: Car, t0_ns: int, seed: int = 0) 
     for k in range(1, 6):
         spread = rng.normal(0, 0.7, 8)
         sig[f"module{k}_temps"] = {f"module_voltage_{i + 1}": _ntc_volts(temp + spread[i]) for i in range(8)}
+    if not car.central_drive:
+        for k in CASCADIA:
+            sig.pop(k, None)
+    if hub_wheels(car):
+        sig.update(_hub_signals(d, car))
     sig.update(_vectornav(d, track, rng, prof["vectornav_noise_std"]))
     sig["vectornav_time"] = {"unix_time_ns": t0_ns + ((t - t[0]) * 1e9).astype(np.int64)}
     return sig
 
 
-def _states(db, d):
+def _states(db, d, car: Car = None):
     """State messages: idle (inverter off) before t = 0, running after."""
-    m170, m192, vcu = (db.get_message_by_name(n) for n in ("M170_Internal_States", "M192_Command_Message", "vcu_status"))
+    vcu = db.get_message_by_name("vcu_status")
+    if car is not None and not car.central_drive:            # no Cascadia
+        running = (d.t >= 0).to_numpy()
+        n = len(d)
+        return {"vcu_status": dict(
+            vcu_statemachine_state=np.where(running, _choice(vcu, "vcu_statemachine_state", "ready_to_drive"),
+                                            _choice(vcu, "vcu_statemachine_state", "tractive_system_energized")).astype(object),
+            vcu_brake_active=d.brake.to_numpy() > 0.05, vcu_imd_ok_high=np.ones(n, bool), vcu_bms_ok_high=np.ones(n, bool),
+            vcu_bspd_ok_high=np.ones(n, bool), vcu_max_torque=np.full(n, 230))}
+    m170, m192 = (db.get_message_by_name(n) for n in ("M170_Internal_States", "M192_Command_Message"))
     running = (d.t >= 0).to_numpy()
     n = len(d)
     pick = lambda msg, sig, on, off: np.where(running, _choice(msg, sig, on), _choice(msg, sig, off)).astype(object)
@@ -315,63 +431,36 @@ def track_scene(track, car=None, plan_line=None):
     return up
 
 
-GOLD, BLACK, SILVER, WHITE = (0.99, 0.73, 0.19), (0.09, 0.09, 0.1), (0.75, 0.76, 0.78), (0.95, 0.95, 0.95)
 
 
 def car_scene(car, steer, ns: int = 0):
     """Foxglove SceneUpdate of the car in its own frame (x forward, z up, origin under
-    the CG), front wheels at `steer` (rad): an FSAE car from primitives (tub and nose,
-    sidepods, wings, roll hoop, driver, wheels with rims), team colours. Frame-locked and
-    stamped `ns`: Foxglove places an entity by its frame at its timestamp, so without
-    them the car stays where the car frame first was."""
+    the CG), front wheels at `steer` (rad): the FSAE car from primitives (car_model),
+    team colours. Frame-locked and stamped `ns`: Foxglove places an entity by its frame
+    at its timestamp, so without them the car stays where the car frame first was."""
     from foxglove_schemas_protobuf.SceneUpdate_pb2 import SceneUpdate
+    from kmslap.reporting import car_model as cm
 
-    lf, lr = car.cg_to_front, car.wheelbase - car.cg_to_front
-    r = car.tire_radius
     up = SceneUpdate()
     e = up.entities.add(id="car", frame_id="car", frame_locked=True)
     e.timestamp.FromNanoseconds(ns)
 
-    def paint(p, rgb, a=1.0):
-        p.color.r, p.color.g, p.color.b, p.color.a = *rgb, a
+    def add(part, center=None, q=None):
+        c = {"cube": e.cubes, "cylinder": e.cylinders, "sphere": e.spheres}[part.kind].add()
+        if part.kind == "cylinder":
+            c.bottom_scale, c.top_scale = 1.0, part.top
+        c.pose.position.x, c.pose.position.y, c.pose.position.z = center or part.center
+        c.pose.orientation.x, c.pose.orientation.y, c.pose.orientation.z, c.pose.orientation.w = (
+            float(v) for v in (part.quat if q is None else q))
+        c.size.x, c.size.y, c.size.z = part.size
+        c.color.r, c.color.g, c.color.b, c.color.a = *part.color, 1.0
 
-    def cube(x, y, z, sx, sy, sz, rgb):
-        c = e.cubes.add()
-        c.pose.position.x, c.pose.position.y, c.pose.position.z = x, y, z
-        c.pose.orientation.w = 1.0
-        c.size.x, c.size.y, c.size.z = sx, sy, sz
-        paint(c, rgb)
-
-    def cylinder(x, y, z, d1, d2, length, q, rgb, top=1.0):
-        c = e.cylinders.add(bottom_scale=1.0, top_scale=top)
-        c.pose.position.x, c.pose.position.y, c.pose.position.z = x, y, z
-        c.pose.orientation.x, c.pose.orientation.y, c.pose.orientation.z, c.pose.orientation.w = (float(v) for v in q)
-        c.size.x, c.size.y, c.size.z = d1, d2, length
-        paint(c, rgb)
-
-    front, rear = lf + 0.1, -lr - 0.05
-    cube((front + rear) / 2 - 0.05, 0, 0.33, front - rear - 0.1, 0.62, 0.42, GOLD)            # tub
-    cylinder(front + 0.25, 0, 0.3, 0.4, 0.55, 0.55, _quat("y", math.pi / 2), GOLD, top=0.35)   # nose cone
-    for side in (1, -1):
-        cube(-0.15, side * 0.42, 0.26, 0.9, 0.26, 0.32, BLACK)                                 # sidepods
-        cube(front + 0.55, side * 0.7, 0.18, 0.45, 0.02, 0.22, BLACK)                          # front endplates
-        cube(rear - 0.35, side * 0.5, 1.0, 0.55, 0.02, 0.4, BLACK)                             # rear endplates
-        cube(rear - 0.15, side * 0.15, 0.75, 0.04, 0.03, 0.55, BLACK)                          # wing mounts
-    cube(front + 0.55, 0, 0.1, 0.4, 1.4, 0.04, BLACK)                                          # front wing
-    cube(rear - 0.35, 0, 1.05, 0.45, 1.0, 0.04, BLACK)                                         # rear wing
-    cube(rear - 0.42, 0, 1.17, 0.28, 1.0, 0.03, BLACK)                                         # its flap
-    cube(-0.3, 0, 0.8, 0.06, 0.5, 0.5, BLACK)                                                  # roll hoop
-    sp = e.spheres.add()                                                                       # driver
-    sp.pose.position.x, sp.pose.position.y, sp.pose.position.z = -0.05, 0.0, 0.78
-    sp.pose.orientation.w = 1.0
-    sp.size.x = sp.size.y = sp.size.z = 0.27
-    paint(sp, WHITE)
-    for x, y, steered in ((lf, car.track_front / 2, True), (lf, -car.track_front / 2, True),
-                          (-lr, car.track_rear / 2, False), (-lr, -car.track_rear / 2, False)):
-        # a cylinder's axis is z: turn it onto y, then steer about z
-        q = _quat_mul(_quat("z", steer if steered else 0.0), _quat("x", math.pi / 2))
-        cylinder(x, y, r, 2 * r, 2 * r, 0.2, q, BLACK)                                         # tire
-        cylinder(x, y, r, 1.25 * r, 1.25 * r, 0.21, q, SILVER)                                 # rim
+    for part in cm.body(car):
+        add(part)
+    for w in cm.wheels(car):
+        turn = cm.quat("z", steer if w.steered else 0.0)
+        for part in cm.wheel_parts(car):
+            add(part, (w.x, w.y, car.tire_radius), cm.quat_mul(turn, part.quat))
     return up
 
 
@@ -487,20 +576,23 @@ def write(d: pd.DataFrame, track, out, car: Car = None, plan_line=None,
     from mcap_protobuf.writer import Writer
 
     car = car or Car()
-    db = cantools.database.load_file(str(DIR / "car.dbc"), strict=False)
-    classes = _protos()
+    folder = vehicle_dir(car)
+    db = cantools.database.load_file(str(folder / "car.dbc"), strict=False)
+    classes = _protos(folder)
+    rates = sensors(car)
     start_ns = start_ns or time.time_ns()
     # the pre-roll: the first sample, parked, inverter off
     pre = d.iloc[[0] * max(int(preroll_s * 50), 1)].copy()
     pre["t"] = np.linspace(-preroll_s, -1e-3, len(pre))
-    for k in ("pedal", "brake", "motor_torque", "motor_rpm", "bus_i", "vx", "vy", "r", "ax", "ay", "steering_wheel"):
+    for k in ("pedal", "brake", "motor_torque", "motor_rpm", "bus_i", "vx", "vy", "r", "ax", "ay", "steering_wheel",
+              *[f"hub_{x}_{w}" for x in ("torque", "cmd") for w in ("fl", "fr", "rl", "rr")]):
         if k in pre:
             pre[k] = 0.0
     if "torque_cmd" in pre:
         pre["torque_cmd"] = 0.0
     d = pd.concat([pre, d], ignore_index=True)
     sigs = sensor_signals(d, track, car, start_ns, seed)
-    sigs.update(_states(db, d))
+    sigs.update(_states(db, d, car))
     t = d.t.to_numpy()
     rng = np.random.default_rng(seed + 1)
     events = []        # (time ns, topic, protobuf)
@@ -510,7 +602,7 @@ def write(d: pd.DataFrame, track, out, car: Car = None, plan_line=None,
         msg = db.get_message_by_name(name)
         topic = msg.name.lower() + "_data"
         cls = classes[msg.name.lower()]
-        rate = SENSORS[name][0] if name in SENSORS else 4.1     # state messages: the inverter's rate
+        rate = rates[name][0] if name in rates else 4.1        # state messages: the inverter's rate
         times = np.arange(t[0], t[-1], 1 / rate) + rng.uniform(0, 1 / rate)
         idx = np.clip(np.searchsorted(t, times), 0, len(t) - 1)
         for k, ts in zip(idx, times):
@@ -555,30 +647,49 @@ def write(d: pd.DataFrame, track, out, car: Car = None, plan_line=None,
         for ns, topic, pb in events:
             w.write_message(topic=topic, message=pb, log_time=ns, publish_time=ns)
             counts[topic] = counts.get(topic, 0) + 1
-        w.add_metadata("kmslap_sim", {"track": track.name, "dbc": "KSU-MS/ksu-ms-dbc main @ ffa1f7d",
-                                      "sensors": json.dumps({k: v[2] for k, v in SENSORS.items()}),
+        source = ("KSU-MS/ksu-ms-dbc main @ ffa1f7d" if folder == DIR
+                  else (DIR / "vehicles" / "SOURCE").read_text().splitlines()[0] + f", vehicle {folder.name}")
+        w.add_metadata("kmslap_sim", {"track": track.name, "dbc": source,
+                                      "sensors": json.dumps({k: v[2] for k, v in rates.items()}),
                                       "not_simulated": json.dumps(NOT_SIMULATED)})
         w.finish()
     return counts
 
 
 def run(track_name: str = "ac18", laps: int = 2, grip: float = 0.85, margin: float = 0.35,
-        step: float = 2.0, width: float | None = None, out: str = "sim.mcap", start: str | None = None) -> dict:
+        step: float = 2.0, width: float | None = None, out: str = "sim.mcap", start: str | None = None,
+        drivetrain: str = "rwd_emrax", soc: float = 1.0) -> dict:
     """Drive `laps` laps of the track's minimum-time plan (events/laptime, cached) and
     write the log, plus a Foxglove layout beside it (<out>.layout.json).
-    start: the log's start time (ISO, e.g. 2025-06-13T14:00); default now."""
+    start: the log's start time (ISO, e.g. 2025-06-13T14:00); default now.
+    drivetrain: a car/drivetrain variant: hub motor cars plan and drive as kmslap laptime
+    does (QP torque control, the brake pedal's regen travel, the inverters' command
+    models), in their vehicle's DBC."""
     from kmslap.driving.drive import drive
     from kmslap.driving.follower import PathFollower
     from kmslap.events import track as T
     from kmslap.events.laptime import plan
 
-    car = Car()
+    from kmslap.car.drivetrain import variant
+    from kmslap.car.powertrain import PACKS, Pack
+    from kmslap.driving.policies import RegenPolicy
+    from kmslap.events.laptime import regen_power, regen_wheel_torque
+
+    car = variant(drivetrain)
+    hubs = car.hub_front or car.hub_rear
     track = T.TRACK_NAMES[track_name](width) if width is not None else T.TRACK_NAMES[track_name]()
-    p = plan(track, grip, margin, step, car)
-    f = PathFollower.for_plan(p, car=car, laps=laps)
+    p = plan(track, grip, margin, step, car, regen=bool(hubs), soc=soc, label=f"{track.name} {drivetrain}")
+    regen, kw = None, {}
+    if hubs:
+        regen = RegenPolicy(regen_travel=0.9)
+        kw = dict(regen_travel=0.9, regen_wheel_torque=regen_wheel_torque(car, regen),
+                  regen_power=regen_power(car, Pack(PACKS["cosmx600v"]), soc))
+    f = PathFollower.for_plan(p, car=car, laps=laps, **kw)
     line = p.line
     res = drive(f, car, psi0=float(line.heading[0] - p.beta_ff[0]), X0=float(line.x[0]), Y0=float(line.y[0]),
-                t_max=(laps + 1) * 4 * p.lap_time, log_period=0.005)
+                t_max=(laps + 1) * 4 * p.lap_time, log_period=0.005, regen=regen, soc0=soc,
+                inverters="native" if hubs else None, torque_mode="qp",
+                progress=f"{track.name} {drivetrain}: {laps} laps for the log, double-track model")
     start_ns = int(pd.Timestamp(start).value) if start else None
     counts = write(res.df, track, out, car, plan_line=line,
                    start_ns=start_ns, lap_times=f.lap_times)

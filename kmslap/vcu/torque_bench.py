@@ -99,8 +99,14 @@ def run(cars=CARS, modes=MODES, params: dict | None = None, workers: int | None 
     jobs = ([("accel", n, m, params, None, inverters) for n, m in cases]
             + [("sine", n, m, params, None, inverters) for n, m in cases]
             + [("skid", n, m, params, v, inverters) for n, m in cases for v in SKID_SPEEDS])
-    with Pool(workers) as p:
-        out = p.map(_job, jobs)
+    from kmslap import progress
+    with Pool(workers) as p, progress.task(f"torque bench: {len(cars)} cars x {len(modes)} modes, "
+                                           "accel / skidpad / sine steer, double-track model",
+                                           total=len(jobs)) as task:
+        out = []
+        for r in p.imap(_job, jobs):
+            out.append(r)
+            task.advance()
     k = len(cases)
     rows = []
     for i, (n, m) in enumerate(cases):

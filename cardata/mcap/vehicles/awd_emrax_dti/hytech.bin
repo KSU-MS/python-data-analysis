@@ -1,0 +1,722 @@
+
+ÅÊ
+hytech.proto"ß
+module1_temps(
+module_voltage_1 (RmoduleVoltage1(
+module_voltage_2 (RmoduleVoltage2(
+module_voltage_3 (RmoduleVoltage3(
+module_voltage_4 (RmoduleVoltage4(
+module_voltage_5 (RmoduleVoltage5(
+module_voltage_6 (RmoduleVoltage6(
+module_voltage_7 (RmoduleVoltage7(
+module_voltage_8 (RmoduleVoltage8"ß
+module2_temps(
+module_voltage_1 (RmoduleVoltage1(
+module_voltage_2 (RmoduleVoltage2(
+module_voltage_3 (RmoduleVoltage3(
+module_voltage_4 (RmoduleVoltage4(
+module_voltage_5 (RmoduleVoltage5(
+module_voltage_6 (RmoduleVoltage6(
+module_voltage_7 (RmoduleVoltage7(
+module_voltage_8 (RmoduleVoltage8"ß
+module3_temps(
+module_voltage_1 (RmoduleVoltage1(
+module_voltage_2 (RmoduleVoltage2(
+module_voltage_3 (RmoduleVoltage3(
+module_voltage_4 (RmoduleVoltage4(
+module_voltage_5 (RmoduleVoltage5(
+module_voltage_6 (RmoduleVoltage6(
+module_voltage_7 (RmoduleVoltage7(
+module_voltage_8 (RmoduleVoltage8"ß
+module4_temps(
+module_voltage_1 (RmoduleVoltage1(
+module_voltage_2 (RmoduleVoltage2(
+module_voltage_3 (RmoduleVoltage3(
+module_voltage_4 (RmoduleVoltage4(
+module_voltage_5 (RmoduleVoltage5(
+module_voltage_6 (RmoduleVoltage6(
+module_voltage_7 (RmoduleVoltage7(
+module_voltage_8 (RmoduleVoltage8"ß
+module5_temps(
+module_voltage_1 (RmoduleVoltage1(
+module_voltage_2 (RmoduleVoltage2(
+module_voltage_3 (RmoduleVoltage3(
+module_voltage_4 (RmoduleVoltage4(
+module_voltage_5 (RmoduleVoltage5(
+module_voltage_6 (RmoduleVoltage6(
+module_voltage_7 (RmoduleVoltage7(
+module_voltage_8 (RmoduleVoltage8"l
+precharge_status'
+precharge_state (RprechargeState/
+precharge_errorCode (RprechargeErrorCode"©
+acu_shutdown_status-
+acu_imd_relay_state (RacuImdRelayState-
+acu_bms_relay_state (RacuBmsRelayState+
+acu_imd_gpio_state (RacuImdGpioState+
+acu_bms_gpio_state (RacuBmsGpioState1
+acu_imd_pwm_frequency (RacuImdPwmFrequency'
+acu_imd_pwm_duty (RacuImdPwmDuty"ˆ
+acu_board_voltage_readings&
+acu_sdc_voltage (RacuSdcVoltage&
+acu_sdc_current (RacuSdcCurrent&
+acu_glv_voltage (RacuGlvVoltage&
+acu_glv_current (RacuGlvCurrent$
+acu_5v_voltage (Racu5vVoltage$
+acu_3v_voltage (Racu3vVoltage"’
+
+vcu_status4
+vcu_statemachine_state (	RvcuStatemachineState(
+vcu_brake_active (RvcuBrakeActive%
+vcu_imd_ok_high (RvcuImdOkHigh%
+vcu_bms_ok_high (RvcuBmsOkHigh'
+vcu_bspd_ok_high (RvcuBspdOkHigh2
+vcu_accel_implausible (RvcuAccelImplausible2
+vcu_brake_implausible (RvcuBrakeImplausible1
+vcu_bspd_current_high (RvcuBspdCurrentHigh-
+vcu_bspd_brake_high	 (RvcuBspdBrakeHigh=
+vcu_accel_brake_implausible
+ (RvcuAccelBrakeImplausible$
+vcu_max_torque (RvcuMaxTorque"
+vcu_pedals_travel(
+vcu_apps1_travel (RvcuApps1Travel(
+vcu_apps2_travel (RvcuApps2Travel$
+vcu_bse_travel (RvcuBseTravel"i
+vcu_pedal_readings
+
+apps_1_raw (Rapps1Raw
+
+apps_2_raw (Rapps2Raw
+bse_raw (RbseRaw"g
+vcu_board_readings_one
+hall_OK (RhallOK
+bse_OK (RbseOK
+
+bspd_fault (R	bspdFault"Ì
+vcu_board_readings_two
+
+vcu_ain_10 (RvcuAin10
+
+vcu_ain_11 (RvcuAin11
+
+vcu_ain_14 (RvcuAin14
+
+vcu_ain_15 (RvcuAin15
+
+vcu_ain_16 (RvcuAin16
+
+vcu_ain_17 (RvcuAin17"
+vcu_distance_tracker_motor-
+vcu_motor_energy_wh (RvcuMotorEnergyWhK
+"vcu_motor_efficiency_instantaneous (RvcuMotorEfficiencyInstantaneous9
+vcu_motor_distance_meters (RvcuMotorDistanceMeters;
+vcu_motor_efficiency_kmkwh (RvcuMotorEfficiencyKmkwh"u
+vcu_set_parameter0
+vcu_target_parameter (RvcuTargetParameter.
+vcu_parameter_value (RvcuParameterValue"Ê
+vcu_pedal_threshold_settings5
+vcu_pedals_settings_MUX (RvcuPedalsSettingsMUX9
+vcu_apps2_start_threshold (RvcuApps2StartThreshold5
+vcu_apps1_end_threshold (RvcuApps1EndThreshold;
+vcu_brake_active_threshold (RvcuBrakeActiveThreshold5
+vcu_apps2_end_threshold (RvcuApps2EndThreshold3
+vcu_apps1_ov_threshold (RvcuApps1OvThreshold3
+vcu_apps1_uv_threshold (RvcuApps1UvThreshold3
+vcu_apps2_ov_threshold (RvcuApps2OvThreshold3
+vcu_apps2_uv_threshold	 (RvcuApps2UvThreshold9
+vcu_apps1_start_threshold
+ (RvcuApps1StartThreshold"†
+ vcu_lifetime_distance_and_ontime.
+vcu_lifetime_ontime (RvcuLifetimeOntime2
+vcu_lifetime_distance (RvcuLifetimeDistance"¨
+dash_buttons-
+dash_button1status (RdashButton1status-
+dash_button2status (RdashButton2status-
+dash_button3status (RdashButton3status-
+dash_button4status (RdashButton4status-
+dash_button5status (RdashButton5status-
+dash_button6status (RdashButton6status"X
+vectornav_position
+vn_latitude (R
+vnLatitude!
+vn_longitude (RvnLongitude"_
+vectornav_attitude
+vn_yaw (RvnYaw
+vn_roll (RvnRoll
+vn_pitch (RvnPitch"R
+vectornav_gyro
+vn_W_x (RvnWX
+vn_W_y (RvnWY
+vn_W_z (RvnWZ"V
+vectornav_velocity
+vn_v_n (RvnVN
+vn_v_e (RvnVE
+vn_v_d (RvnVD"r
+vectornav_acceleration
+
+vn_accel_x (RvnAccelX
+
+vn_accel_y (RvnAccelY
+
+vn_accel_z (RvnAccelZ"2
+vectornav_time 
+unix_time_ns (R
+unixTimeNs"M
+vectornav_state:
+inertial_navigation_state (RinertialNavigationState"g
+an1_steeringpot
+
+an1_uint12 (R	an1Uint12
+angle (Rangle
+angle_delta (R
+angleDelta"‚
+an1_front_brakepressure
+
+an1_uint12 (R	an1Uint12!
+pressure_kPa (RpressureKPa%
+pressure_delta (RpressureDelta"
+an1_rear_brakepressure
+
+an1_uint12 (R	an1Uint12!
+pressure_kPa (RpressureKPa%
+pressure_delta (RpressureDelta"p
+an1_fl_shockpot
+
+an1_uint12 (R	an1Uint12
+	length_mm (RlengthMm!
+length_delta (RlengthDelta"p
+an1_fr_shockpot
+
+an1_uint12 (R	an1Uint12
+	length_mm (RlengthMm!
+length_delta (RlengthDelta"p
+an1_rl_shockpot
+
+an1_uint12 (R	an1Uint12
+	length_mm (RlengthMm!
+length_delta (RlengthDelta"p
+an1_rr_shockpot
+
+an1_uint12 (R	an1Uint12
+	length_mm (RlengthMm!
+length_delta (RlengthDelta"j
+an1_fl_loadcell
+
+an1_uint12 (R	an1Uint12
+force_N (RforceN
+force_delta (R
+forceDelta"j
+an1_fr_loadcell
+
+an1_uint12 (R	an1Uint12
+force_N (RforceN
+force_delta (R
+forceDelta"j
+an1_rl_loadcell
+
+an1_uint12 (R	an1Uint12
+force_N (RforceN
+force_delta (R
+forceDelta"j
+an1_rr_loadcell
+
+an1_uint12 (R	an1Uint12
+force_N (RforceN
+force_delta (R
+forceDelta"X
+an1_fl_wheelspeed
+	wheel_rpm (RwheelRpm&
+wheel_rpm_delta (RwheelRpmDelta"X
+an1_fr_wheelspeed
+	wheel_rpm (RwheelRpm&
+wheel_rpm_delta (RwheelRpmDelta"X
+an1_rl_wheelspeed
+	wheel_rpm (RwheelRpm&
+wheel_rpm_delta (RwheelRpmDelta"X
+an1_rr_wheelspeed
+	wheel_rpm (RwheelRpm&
+wheel_rpm_delta (RwheelRpmDelta"{
+an1_fl_tiretemp
+inner_C (RinnerC
+middle_C (RmiddleC
+outer_C (RouterC
+	average_C (RaverageC"{
+an1_fr_tiretemp
+inner_C (RinnerC
+middle_C (RmiddleC
+outer_C (RouterC
+	average_C (RaverageC"{
+an1_rl_tiretemp
+inner_C (RinnerC
+middle_C (RmiddleC
+outer_C (RouterC
+	average_C (RaverageC"{
+an1_rr_tiretemp
+inner_C (RinnerC
+middle_C (RmiddleC
+outer_C (RouterC
+	average_C (RaverageC"T
+an1_motor_temp
+
+an1_uint12 (R	an1Uint12#
+temperature_C (RtemperatureC"V
+an1_coolant_temp
+
+an1_uint12 (R	an1Uint12#
+temperature_C (RtemperatureC"˜
+module1_status)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty+
+board_temperature (RboardTemperature%
+board_humidity (RboardHumidity"˜
+module2_status)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty+
+board_temperature (RboardTemperature%
+board_humidity (RboardHumidity"˜
+module3_status)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty+
+board_temperature (RboardTemperature%
+board_humidity (RboardHumidity"˜
+module4_status)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty+
+board_temperature (RboardTemperature%
+board_humidity (RboardHumidity"˜
+module5_status)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty+
+board_temperature (RboardTemperature%
+board_humidity (RboardHumidity"˜
+acu_board_data)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty+
+board_temperature (RboardTemperature%
+board_humidity (RboardHumidity"Ä
+vcu_board_data)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty"Å
+dash_board_data)
+firmware_version (RfirmwareVersion1
+board_on_time_seconds (RboardOnTimeSeconds(
+firmware_on_main (RfirmwareOnMain*
+firmware_is_dirty (RfirmwareIsDirty"³
+vcu_traction_control&
+vcu_tc_selected (	RvcuTcSelected"
+vcu_tc_active (	RvcuTcActive-
+vcu_tc_no_vectornav (RvcuTcNoVectornav0
+vcu_tc_no_motor_speed (RvcuTcNoMotorSpeed4
+vcu_tc_gear_ratio_fault (RvcuTcGearRatioFault4
+vcu_tc_waiting_for_lift (RvcuTcWaitingForLift
+vcu_tc_slip (R	vcuTcSlip 
+vcu_tc_speed (R
+vcuTcSpeed 
+vcu_tc_scale	 (R
+vcuTcScale
+vcu_tc_grip
+ (R	vcuTcGrip"Œ
+vcu_pi_status
+vcu_pi_mode (	R	vcuPiMode"
+vcu_pi_reason (	RvcuPiReason3
+vcu_pi_rejected_frames (RvcuPiRejectedFrames/
+vcu_pi_driver_torque (RvcuPiDriverTorque+
+vcu_pi_torque_sent (RvcuPiTorqueSent$
+vcu_pi_ceiling (RvcuPiCeiling"œ
+pi_torque_command*
+pi_torque_ceiling (RpiTorqueCeiling
+	pi_engage (RpiEngage
+
+pi_counter (R	piCounter
+pi_checksum (R
+piChecksum"Ë
+pi_motor_torque_command+
+pi_motor_torque_fl (RpiMotorTorqueFl+
+pi_motor_torque_fr (RpiMotorTorqueFr+
+pi_motor_torque_rl (RpiMotorTorqueRl+
+pi_motor_torque_rr (RpiMotorTorqueRr&
+pi_motor_engage (RpiMotorEngage(
+pi_motor_counter (RpiMotorCounter*
+pi_motor_checksum (RpiMotorChecksum"×
+vcu_motor_torque_commands-
+vcu_motor_torque_fl (RvcuMotorTorqueFl-
+vcu_motor_torque_fr (RvcuMotorTorqueFr-
+vcu_motor_torque_rl (RvcuMotorTorqueRl-
+vcu_motor_torque_rr (RvcuMotorTorqueRr"B
+vcu_uds_request/
+vcu_uds_request_data (RvcuUdsRequestData"E
+vcu_uds_response1
+vcu_uds_response_data (RvcuUdsResponseData"
+inv_fl_erpm_duty_voltage
+Actual_ERPM (R
+ActualERPM
+Actual_Duty (R
+ActualDuty/
+Actual_InputVoltage (RActualInputVoltage"l
+inv_fl_ac_dc_current)
+Actual_ACCurrent (RActualACCurrent)
+Actual_DCCurrent (RActualDCCurrent" 
+inv_fl_temperatures3
+Actual_TempController (RActualTempController)
+Actual_TempMotor (RActualTempMotor)
+Actual_FaultCode (	RActualFaultCode"T
+
+inv_fl_foc"
+Actual_FOC_id (RActualFOCId"
+Actual_FOC_iq (RActualFOCIq"·
+inv_fl_misc'
+Actual_Throttle (RActualThrottle!
+Actual_Brake (RActualBrake(
+Digital_output_4 (	RDigitalOutput4(
+Digital_output_3 (	RDigitalOutput3(
+Digital_output_2 (	RDigitalOutput2(
+Digital_output_1 (	RDigitalOutput1&
+Digital_input_4 (	RDigitalInput4&
+Digital_input_3 (	RDigitalInput3&
+Digital_input_2	 (	RDigitalInput2&
+Digital_input_1
+ (	RDigitalInput1!
+Drive_enable (	RDriveEnable(
+Motor_temp_limit (	RMotorTempLimit*
+Motor_accel_limit (	RMotorAccelLimit.
+Input_voltage_limit (	RInputVoltageLimit&
+IGBT_temp_limit (	RIGBTTempLimit(
+IGBT_accel_limit (	RIGBTAccelLimit,
+Drive_enable_limit (	RDriveEnableLimit(
+DC_current_limit (	RDCCurrentLimit0
+Capacitor_temp_limit (	RCapacitorTempLimit
+Power_limit (	R
+PowerLimit"
+RPM_max_limit (	RRPMMaxLimit"
+RPM_min_limit (	RRPMMinLimit&
+CAN_map_version (RCANMapVersion"@
+inv_fl_setdriveenable'
+CMD_DriveEnable (	RCMDDriveEnable"F
+inv_fl_setaccurrent/
+CMD_TargetAcCurrent (RCMDTargetAcCurrent"O
+inv_fl_setbrakecurrent5
+CMD_TargetBrakeCurrent (RCMDTargetBrakeCurrent"9
+inv_fl_seterpm'
+CMD_TargetSpeed (RCMDTargetSpeed"C
+inv_fl_setposition-
+CMD_TargetPosition (RCMDTargetPosition"S
+inv_fl_setrelcurrent;
+CMD_TargetRelativeCurrent (RCMDTargetRelativeCurrent"`
+inv_fl_setrelbrakecurrentC
+CMD_TargeRelativeBrakeCurrent (RCMDTargeRelativeBrakeCurrent"C
+inv_fl_setmaxaccurrent)
+CMD_MaxAcCurrent (RCMDMaxAcCurrent"R
+inv_fl_setmaxacbrakecurrent3
+CMD_MaxAcBrakeCurrent (RCMDMaxAcBrakeCurrent"C
+inv_fl_setmaxdccurrent)
+CMD_MaxDcCurrent (RCMDMaxDcCurrent"R
+inv_fl_setmaxdcbrakecurrent3
+CMD_MaxDcBrakeCurrent (RCMDMaxDcBrakeCurrent"É
+inv_fl_setdigoutput+
+CMD_SetDigOutput1 (RCMDSetDigOutput1+
+CMD_SetDigOutput2 (RCMDSetDigOutput2+
+CMD_SetDigOutput3 (RCMDSetDigOutput3+
+CMD_SetDigOutput4 (RCMDSetDigOutput4"™
+inv_fl_targetiq 
+ControlMode (RControlMode
+TargetIq (RTargetIq$
+MotorPosition (RMotorPosition"
+isMotorStill (RisMotorStill"Ì
+inv_fl_minmaxaccurrent"
+MaxAcCurrent (RMaxAcCurrent4
+AvailableMaxAcCurrent (RAvailableMaxAcCurrent"
+MinAcCurrent (RMinAcCurrent4
+AvailableMinAcCurrent (RAvailableMinAcCurrent"Ì
+inv_fl_minmaxdccurrent"
+MaxDcCurrent (RMaxDcCurrent4
+AvailableMaxDcCurrent (RAvailableMaxDcCurrent"
+MinDcCurrent (RMinDcCurrent4
+AvailableMinDcCurrent (RAvailableMinDcCurrent"
+inv_fr_erpm_duty_voltage
+Actual_ERPM (R
+ActualERPM
+Actual_Duty (R
+ActualDuty/
+Actual_InputVoltage (RActualInputVoltage"l
+inv_fr_ac_dc_current)
+Actual_ACCurrent (RActualACCurrent)
+Actual_DCCurrent (RActualDCCurrent" 
+inv_fr_temperatures3
+Actual_TempController (RActualTempController)
+Actual_TempMotor (RActualTempMotor)
+Actual_FaultCode (	RActualFaultCode"T
+
+inv_fr_foc"
+Actual_FOC_id (RActualFOCId"
+Actual_FOC_iq (RActualFOCIq"·
+inv_fr_misc'
+Actual_Throttle (RActualThrottle!
+Actual_Brake (RActualBrake(
+Digital_output_4 (	RDigitalOutput4(
+Digital_output_3 (	RDigitalOutput3(
+Digital_output_2 (	RDigitalOutput2(
+Digital_output_1 (	RDigitalOutput1&
+Digital_input_4 (	RDigitalInput4&
+Digital_input_3 (	RDigitalInput3&
+Digital_input_2	 (	RDigitalInput2&
+Digital_input_1
+ (	RDigitalInput1!
+Drive_enable (	RDriveEnable(
+Motor_temp_limit (	RMotorTempLimit*
+Motor_accel_limit (	RMotorAccelLimit.
+Input_voltage_limit (	RInputVoltageLimit&
+IGBT_temp_limit (	RIGBTTempLimit(
+IGBT_accel_limit (	RIGBTAccelLimit,
+Drive_enable_limit (	RDriveEnableLimit(
+DC_current_limit (	RDCCurrentLimit0
+Capacitor_temp_limit (	RCapacitorTempLimit
+Power_limit (	R
+PowerLimit"
+RPM_max_limit (	RRPMMaxLimit"
+RPM_min_limit (	RRPMMinLimit&
+CAN_map_version (RCANMapVersion"@
+inv_fr_setdriveenable'
+CMD_DriveEnable (	RCMDDriveEnable"F
+inv_fr_setaccurrent/
+CMD_TargetAcCurrent (RCMDTargetAcCurrent"O
+inv_fr_setbrakecurrent5
+CMD_TargetBrakeCurrent (RCMDTargetBrakeCurrent"9
+inv_fr_seterpm'
+CMD_TargetSpeed (RCMDTargetSpeed"C
+inv_fr_setposition-
+CMD_TargetPosition (RCMDTargetPosition"S
+inv_fr_setrelcurrent;
+CMD_TargetRelativeCurrent (RCMDTargetRelativeCurrent"`
+inv_fr_setrelbrakecurrentC
+CMD_TargeRelativeBrakeCurrent (RCMDTargeRelativeBrakeCurrent"C
+inv_fr_setmaxaccurrent)
+CMD_MaxAcCurrent (RCMDMaxAcCurrent"R
+inv_fr_setmaxacbrakecurrent3
+CMD_MaxAcBrakeCurrent (RCMDMaxAcBrakeCurrent"C
+inv_fr_setmaxdccurrent)
+CMD_MaxDcCurrent (RCMDMaxDcCurrent"R
+inv_fr_setmaxdcbrakecurrent3
+CMD_MaxDcBrakeCurrent (RCMDMaxDcBrakeCurrent"É
+inv_fr_setdigoutput+
+CMD_SetDigOutput1 (RCMDSetDigOutput1+
+CMD_SetDigOutput2 (RCMDSetDigOutput2+
+CMD_SetDigOutput3 (RCMDSetDigOutput3+
+CMD_SetDigOutput4 (RCMDSetDigOutput4"™
+inv_fr_targetiq 
+ControlMode (RControlMode
+TargetIq (RTargetIq$
+MotorPosition (RMotorPosition"
+isMotorStill (RisMotorStill"Ì
+inv_fr_minmaxaccurrent"
+MaxAcCurrent (RMaxAcCurrent4
+AvailableMaxAcCurrent (RAvailableMaxAcCurrent"
+MinAcCurrent (RMinAcCurrent4
+AvailableMinAcCurrent (RAvailableMinAcCurrent"Ì
+inv_fr_minmaxdccurrent"
+MaxDcCurrent (RMaxDcCurrent4
+AvailableMaxDcCurrent (RAvailableMaxDcCurrent"
+MinDcCurrent (RMinDcCurrent4
+AvailableMinDcCurrent (RAvailableMinDcCurrent"¸
+msgid_0x6b1!
+Pack_Current (RPackCurrent*
+Pack_Inst_Voltage (RPackInstVoltage*
+Pack_Open_Voltage (RPackOpenVoltage.
+Pack_Summed_Voltage (RPackSummedVoltage"æ
+msgid_0x6b2)
+High_Temperature (RHighTemperature'
+Low_Temperature (RLowTemperature/
+Average_Temperature (RAverageTemperature(
+Avg_Cell_Voltage (RAvgCellVoltage(
+Low_Cell_Voltage (RLowCellVoltage"(
+msgid_0x6b3
+Pack_SOC (RPackSOC"`
+msgid_0x6b4Q
+&DTC_P0AA6_High_Voltage_Isolation_Fault (R!DTCP0AA6HighVoltageIsolationFault"®
+msgid_0x1806e7f40
+Maximum_Pack_Voltage (RMaximumPackVoltage
+Pack_CCL (RPackCCLM
+$DTC_P0A08_Charger_Safety_Relay_Fault (RDTCP0A08ChargerSafetyRelayFault"®
+msgid_0x1806e5f40
+Maximum_Pack_Voltage (RMaximumPackVoltage
+Pack_CCL (RPackCCLM
+$DTC_P0A08_Charger_Safety_Relay_Fault (RDTCP0A08ChargerSafetyRelayFault"®
+msgid_0x1806e9f40
+Maximum_Pack_Voltage (RMaximumPackVoltage
+Pack_CCL (RPackCCLM
+$DTC_P0A08_Charger_Safety_Relay_Fault (RDTCP0A08ChargerSafetyRelayFault"Ø
+m173_modulation_and_flux_info0
+INV_Modulation_Index (RINVModulationIndex9
+INV_Flux_Weakening_Output (RINVFluxWeakeningOutput$
+INV_Id_Command (RINVIdCommand$
+INV_Iq_Command (RINVIqCommand"«
+m172_torque_and_timer_info0
+INV_Commanded_Torque (RINVCommandedTorque.
+INV_Torque_Feedback (RINVTorqueFeedback+
+INV_Power_On_Timer (RINVPowerOnTimer"ä
+m194_read_write_param_response=
+INV_Parameter_Response_Addr (RINVParameterResponseAddrD
+INV_Parameter_Response_Write_OK (RINVParameterResponseWriteOK=
+INV_Parameter_Response_Data (RINVParameterResponseData"Ï
+m193_read_write_param_command9
+VCU_INV_Parameter_Address (RVCUINVParameterAddress>
+VCU_INV_Parameter_RW_Command (RVCUINVParameterRWCommand3
+VCU_INV_Parameter_Data (RVCUINVParameterData"Þ
+m192_command_message3
+VCU_INV_Torque_Command (RVCUINVTorqueCommand1
+VCU_INV_Speed_Command (RVCUINVSpeedCommand9
+VCU_INV_Direction_Command (	RVCUINVDirectionCommand5
+VCU_INV_Inverter_Enable (	RVCUINVInverterEnable;
+VCU_INV_Inverter_Discharge (	RVCUINVInverterDischarge8
+VCU_INV_Speed_Mode_Enable (RVCUINVSpeedModeEnable5
+VCU_INV_Rolling_Counter (RVCUINVRollingCounter>
+VCU_INV_Torque_Limit_Command (RVCUINVTorqueLimitCommand"º
+m171_fault_codes)
+INV_Post_Fault_Lo (RINVPostFaultLo)
+INV_Post_Fault_Hi (RINVPostFaultHi'
+INV_Run_Fault_Lo (RINVRunFaultLo'
+INV_Run_Fault_Hi (RINVRunFaultHi"˜
+m170_internal_states"
+INV_VSM_State (	RINVVSMState*
+INV_PWM_Frequency (RINVPWMFrequency,
+INV_Inverter_State (	RINVInverterState+
+INV_Relay_1_Status (RINVRelay1Status+
+INV_Relay_2_Status (RINVRelay2Status+
+INV_Relay_3_Status (RINVRelay3Status+
+INV_Relay_4_Status (RINVRelay4Status+
+INV_Relay_5_Status (RINVRelay5Status+
+INV_Relay_6_Status	 (RINVRelay6Status1
+INV_Inverter_Run_Mode
+ (RINVInverterRunModeB
+INV_Self_Sensing_Assist_Enable (RINVSelfSensingAssistEnable?
+INV_Inverter_Discharge_State (	RINVInverterDischargeState9
+INV_Inverter_Command_Mode (RINVInverterCommandMode.
+INV_Rolling_Counter (RINVRollingCounter9
+INV_Inverter_Enable_State (RINVInverterEnableState/
+INV_Burst_Model_Mode (	RINVBurstModelMode@
+INV_BMS_Limiting_Regen_Torque (RINVBMSLimitingRegenTorque<
+INV_Key_Switch_Start_Status (RINVKeySwitchStartStatus=
+INV_Inverter_Enable_Lockout (RINVInverterEnableLockout2
+INV_Direction_Command (RINVDirectionCommand$
+INV_BMS_Active (RINVBMSActive@
+INV_BMS_Limiting_Motor_Torque (RINVBMSLimitingMotorTorque-
+INV_Limit_Max_Speed (RINVLimitMaxSpeed+
+INV_Limit_Hot_Spot (RINVLimitHotSpot3
+INV_Low_Speed_Limiting (RINVLowSpeedLimiting;
+INV_Limit_Coolant_Derating (RINVLimitCoolantDerating<
+INV_Limit_Stall_Burst_Model (	RINVLimitStallBurstModel"Ò
+m169_internal_voltages,
+INV_Ref_Voltage_1_5 (RINVRefVoltage15,
+INV_Ref_Voltage_2_5 (RINVRefVoltage25,
+INV_Ref_Voltage_5_0 (RINVRefVoltage50.
+INV_Ref_Voltage_12_0 (RINVRefVoltage120"|
+m168_flux_id_iq_info
+	INV_Vd_ff (RINVVdFf
+	INV_Vq_ff (RINVVqFf
+INV_Id (RINVId
+INV_Iq (RINVIq"È
+m167_voltage_info+
+INV_DC_Bus_Voltage (RINVDCBusVoltage,
+INV_Output_Voltage (RINVOutputVoltage+
+INV_VAB_Vd_Voltage (RINVVABVdVoltage+
+INV_VBC_Vq_Voltage (RINVVBCVqVoltage"Í
+m166_current_info-
+INV_Phase_A_Current (RINVPhaseACurrent-
+INV_Phase_B_Current (RINVPhaseBCurrent-
+INV_Phase_C_Current (RINVPhaseCCurrent+
+INV_DC_Bus_Current (RINVDCBusCurrent"…
+m165_motor_position_info;
+INV_Motor_Angle_Electrical (RINVMotorAngleElectrical&
+INV_Motor_Speed (RINVMotorSpeedE
+INV_Electrical_Output_Frequency (RINVElectricalOutputFrequency=
+INV_Delta_Resolver_Filtered (RINVDeltaResolverFiltered"“
+m164_digital_input_status-
+INV_Digital_Input_1 (RINVDigitalInput1-
+INV_Digital_Input_2 (RINVDigitalInput2-
+INV_Digital_Input_3 (RINVDigitalInput3-
+INV_Digital_Input_4 (RINVDigitalInput4-
+INV_Digital_Input_5 (RINVDigitalInput5-
+INV_Digital_Input_6 (RINVDigitalInput6-
+INV_Digital_Input_7 (RINVDigitalInput7-
+INV_Digital_Input_8 (RINVDigitalInput8"ª
+m163_analog_input_voltages+
+INV_Analog_Input_1 (RINVAnalogInput1+
+INV_Analog_Input_2 (RINVAnalogInput2+
+INV_Analog_Input_3 (RINVAnalogInput3+
+INV_Analog_Input_4 (RINVAnalogInput4+
+INV_Analog_Input_5 (RINVAnalogInput5+
+INV_Analog_Input_6 (RINVAnalogInput6"Á
+m162_temperature_set_3(
+INV_Coolant_Temp (RINVCoolantTemp)
+INV_Hot_Spot_Temp (RINVHotSpotTemp$
+INV_Motor_Temp (RINVMotorTemp,
+INV_Torque_Shudder (RINVTorqueShudder"í
+m161_temperature_set_23
+INV_Control_Board_Temp (RINVControlBoardTemp0
+INV_RTD1_Temperature (RINVRTD1Temperature0
+INV_RTD2_Temperature (RINVRTD2Temperature:
+INV_Stall_Burst_Model_Temp (RINVStallBurstModelTemp"Õ
+m160_temperature_set_1)
+INV_Module_A_Temp (RINVModuleATemp)
+INV_Module_B_Temp (RINVModuleBTemp)
+INV_Module_C_Temp (RINVModuleCTemp:
+INV_Gate_Driver_Board_Temp (RINVGateDriverBoardTemp"Ê
+m174_firmware_info6
+INV_Project_Code_EEP_Ver (RINVProjectCodeEEPVer$
+INV_SW_Version (RINVSWVersion*
+INV_DateCode_MMDD (RINVDateCodeMMDD*
+INV_DateCode_YYYY (RINVDateCodeYYYY"â
+m175_diag_data_message&
+INV_Diag_Record (RINVDiagRecord(
+INV_Diag_Segment (RINVDiagSegment)
+INV_Diag_PWM_Freq (RINVDiagPWMFreq%
+INV_Diag_Vq_Cmd (RINVDiagVqCmd%
+INV_Diag_Id_cmd (RINVDiagIdCmd
+INV_Diag_Ic (R	INVDiagIc)
+INV_Diag_Cos_Used (RINVDiagCosUsed5
+INV_Diag_Gamma_Resolver (RINVDiagGammaResolver2
+INV_Diag_Run_Faults_Lo	 (RINVDiagRunFaultsLo%
+INV_Diag_Vd_Cmd
+ (RINVDiagVdCmd+
+INV_Diag_Mod_Index (RINVDiagModIndex 
+INV_Diag_Vdc (R
+INVDiagVdc
+INV_Diag_Ia (R	INVDiagIa5
+INV_Diag_Gamma_Observer (RINVDiagGammaObserver2
+INV_Diag_Run_Faults_Hi (RINVDiagRunFaultsHi'
+INV_Diag_Vqs_Cmd (RINVDiagVqsCmd+
+INV_Diag_FW_Output (RINVDiagFWOutput%
+INV_Diag_Iq_cmd (RINVDiagIqCmd
+INV_Diag_Ib (R	INVDiagIb)
+INV_Diag_Sin_Used (RINVDiagSinUsed"ƒ
+bms_current_limit9
+BMS_Max_Discharge_Current (RBMSMaxDischargeCurrent3
+BMS_Max_Charge_Current (RBMSMaxChargeCurrent"ç
+m176_fast_info5
+INV_Fast_Torque_Command (RINVFastTorqueCommand7
+INV_Fast_Torque_Feedback (RINVFastTorqueFeedback/
+INV_Fast_Motor_Speed (RINVFastMotorSpeed4
+INV_Fast_DC_Bus_Voltage (RINVFastDCBusVoltage"–
+m177_torque_capability=
+INV_Torque_Capability_Motor (RINVTorqueCapabilityMotor=
+INV_Torque_Capability_Regen (RINVTorqueCapabilityRegen"ü
+status$
+OutputVoltage (ROutputVoltage$
+OutputCurrent (ROutputCurrent
+HWStatus (	RHWStatus 
+Temperature (	RTemperature"
+InputVoltage (	RInputVoltage
+State (	RState.
+CommunicationState (	RCommunicationStatebproto3

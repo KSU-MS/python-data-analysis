@@ -98,7 +98,7 @@ def solve(center, env, *, car=None, width: float = track_mod.TRACK_WIDTH,
           grip: float = 1.0, step: float = 2.0, max_steering_wheel: float = np.radians(120),
           max_yaw_accel: float = 6.0, energy_kwh: float | None = None,
           regen_eff: float | None = None, smooth_weight: float = 1e-3,
-          max_iter: int = 6000, verbose: bool = False, build_only: bool = False) -> MinTime:
+          max_iter: int = 6000, verbose: bool = False, build_only: bool = False, label: str = "") -> MinTime:
     """center: a Track, or a centerline (then the track is `width` wide).
     grip: fraction of the envelope used (1 = the car's limit; a driver holds ~0.9).
     energy_kwh: battery energy allowed per lap (None: unconstrained).
@@ -191,8 +191,12 @@ def solve(center, env, *, car=None, width: float = track_mod.TRACK_WIDTH,
     opti.solver("ipopt", {"print_time": verbose},
                 {"print_level": 5 if verbose else 0, "max_iter": max_iter, "tol": 1e-6,
                  "mu_strategy": "adaptive"})
+    from kmslap import progress
     try:
-        sol = opti.solve()
+        with progress.task(f"{label + ': ' if label else ''}warm start, quasi-steady min-time plan "
+                           "(g-g-v envelope, Ipopt)") as task:
+            opti.callback(lambda i: task.note(f"iteration {i}"))
+            sol = opti.solve()
         stats = sol.stats()
         val = sol.value
     except RuntimeError:

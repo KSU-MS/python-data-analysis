@@ -49,11 +49,19 @@ def test_no_regen_below_min_speed():
 def test_charge_limits():
     car = Car()
     hard = RegenPolicy(lift_torque=230.0)
-    # current: a strong regen at mid charge is held at the pack's charge current
+    # current: the cells' charge peak, past the continuous rating, while its time lasts
+    # (100 N m: more locks the rear wheels)
     pack = Pack(PACKS["cosmx600v"])
-    d = drive(ScriptedDriver(pedal=lambda t: 0.0), car, pack=pack, vx0=25.0, soc0=0.5,
-              t_max=1.0, regen=hard).df.iloc[30:]
-    assert d.bus_i.min() == pytest.approx(-pack.max_charge_current, rel=1e-6)
+    lift = RegenPolicy(lift_torque=100.0)
+    d = drive(ScriptedDriver(pedal=lambda t: 0.0), car, pack=pack, vx0=34.0, soc0=0.5,
+              t_max=1.0, regen=lift).df
+    assert -pack.peak_charge_current <= d.bus_i.min() < -1.2 * pack.max_charge_current
+    # then the continuous rating
+    pack.peak_charge_s = 0.3
+    d = drive(ScriptedDriver(pedal=lambda t: 0.0), car, pack=pack, vx0=34.0, soc0=0.5,
+              t_max=1.0, regen=lift).df
+    used = d[d.charge_peak_used >= 0.3]
+    assert len(used) > 10 and used.bus_i.min() == pytest.approx(-pack.max_charge_current, rel=1e-6)
     # voltage: a full pack with a 4.2 V cell ceiling can't take any charge
     full = Pack(PACKS["cosmx600v"], v_cell_max=4.2)
     d = drive(ScriptedDriver(pedal=lambda t: 0.0), car, pack=full, vx0=25.0, soc0=1.0,
@@ -69,3 +77,12 @@ def test_blend_rear_share_cap():
         friction = brake * car.max_brake_torque
         rear = friction * (1 - car.brake_bias_front) + regen_wheel
         assert rear / (friction + regen_wheel) == pytest.approx(0.5, abs=1e-9)
+
+
+def test_regen_slip_control_keeps_the_rear_from_locking():
+    pack = Pack(PACKS["cosmx600v"])
+    run = lambda sc: drive(ScriptedDriver(pedal=lambda t: 0.0), Car(), pack=pack, vx0=34.0, soc0=0.5, t_max=2.0,
+                           regen=RegenPolicy(lift_torque=230.0, slip_control=sc), log_period=0.01).df
+    assert run(False).kappa_rl.min() < -0.9                  # 230 N m of rear regen locks the rear
+    held = run(True)
+    assert held.kappa_rl.min() > -0.3 and (held.bus_i < -10).mean() > 0.8   # held, and still regenerating

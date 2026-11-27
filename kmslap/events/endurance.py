@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from kmslap import dirs
 from kmslap.driving.drive import drive
 from kmslap.driving.policies import DrsPolicy
 from kmslap.driving.follower import PathFollower
@@ -62,7 +63,7 @@ def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_tim
                                 pedal_regen_torque=regen.lift_torque if regen else 0.0)
         res = drive(follower, car, pack=pack, drs=drs, regen=regen, soc0=soc, pack_temp0=temp,
                     psi0=float(path.heading[0]), t_max=stint_laps * 200.0, log_period=log_period,
-                    torque_mode=torque_mode)
+                    torque_mode=torque_mode, progress=_what(car, label, n, len(stints), regen, drs))
         d = res.df.copy()
         d["stint"] = n
         d["t_event"] = d.t + t_offset
@@ -95,8 +96,18 @@ def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_tim
     return EnduranceResult(df, summary, lap_times)
 
 
-def compare(laps: int = 18, margin: float = 0.8, out: str = "endurance.png"):
+def _what(car, label, stint, stints, regen, drs) -> str:
+    """The progress line: which run, of what car, in which model."""
+    from kmslap.car.drivetrain import name_of
+    who = f'"{label}" ({name_of(car)})' if label else name_of(car)
+    extras = ", ".join(x for x in ("regen" if regen else "", "DRS" if drs else "") if x)
+    stint = f" stint {stint + 1}/{stints}" if stints > 1 else ""
+    return f"{who}: endurance{stint}, double-track model{', ' + extras if extras else ''}"
+
+
+def compare(laps: int = 18, margin: float = 0.8, out: str | None = None):
     """Wing closed / open / DRS / lift-and-coast over the event, plotted into `out`."""
+    out = dirs.out("endurance", out, "endurance.png")
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

@@ -1,5 +1,5 @@
 """Saved laps (reporting/runs) racing in 3D in Rerun: the track (surface, edges, cones),
-each car as a body with steered front wheels on its own colour, its whole line coloured
+each car the FSAE car of the Foxglove log (car_model) in its own colour, front wheels steered, its whole line coloured
 by speed, and speed / body slip / steering / gap plots on the same timeline.
 
     kmslap race ac18 --rerun                 # open the viewer
@@ -16,6 +16,7 @@ import rerun.blueprint as rrb
 
 from kmslap.car.params import Car
 from kmslap.events import track as T
+from kmslap.reporting import car_model as cm
 from kmslap.reporting.viz import _path
 
 COLORS = [(230, 80, 74), (70, 140, 230), (90, 190, 110), (230, 170, 50), (155, 89, 182), (23, 190, 207),
@@ -59,12 +60,38 @@ def _log_track(track: T.Track):
                                              colors=[(242, 142, 43)]), static=True)
 
 
+def _log_car(base: str, car: Car, color, label: str):
+    """The FSAE car (car_model) at `base`, its livery in `color`; wheels at
+    base/wheel_<w>/steer (the front ones turned by the steer transform)."""
+    rgb = lambda c: tuple(int(255 * v) for v in c)
+    parts = cm.body(car)
+    for kind in ("cube", "cylinder", "sphere"):
+        ps = [p for p in parts if p.kind == kind]
+        cols = [color if p.paint else rgb(p.color) for p in ps]
+        if kind == "cube":
+            arch = rr.Boxes3D(centers=[p.center for p in ps], half_sizes=[np.divide(p.size, 2) for p in ps],
+                              quaternions=[p.quat for p in ps], colors=cols, fill_mode="solid")
+        elif kind == "cylinder":                         # Rerun's have one radius: a cone as its mean
+            arch = rr.Cylinders3D(centers=[p.center for p in ps], radii=[p.size[0] * (1 + p.top) / 4 for p in ps],
+                                  lengths=[p.size[2] for p in ps], quaternions=[p.quat for p in ps], colors=cols,
+                                  fill_mode="solid")
+        else:
+            arch = rr.Ellipsoids3D(centers=[p.center for p in ps], half_sizes=[np.divide(p.size, 2) for p in ps],
+                                   colors=cols, fill_mode="solid")
+        rr.log(f"{base}/body/{kind}s", arch, static=True)
+    rr.log(f"{base}/body/label", rr.Points3D([(0, 0, 1.5)], radii=0.01, labels=[label], colors=[color]), static=True)
+    for w in cm.wheels(car):
+        rr.log(f"{base}/wheel_{w.name}", rr.Transform3D(translation=(w.x, w.y, car.tire_radius)), static=True)
+        ws = cm.wheel_parts(car)
+        rr.log(f"{base}/wheel_{w.name}/steer/wheel",
+               rr.Cylinders3D(radii=[p.size[0] / 2 for p in ws], lengths=[p.size[2] for p in ws],
+                              quaternions=[p.quat for p in ws], colors=[rgb(p.color) for p in ws],
+                              fill_mode="solid"), static=True)
+
+
 def log_race(laps: dict, track: T.Track, car: Car = None):
     car = car or Car()
     _log_track(track)
-    lf = car.cg_to_front
-    lr = car.wheelbase - lf
-    r = car.tire_radius
     vmax = max(d.speed.max() for d in laps.values())
     ref = min(laps.values(), key=lambda d: d.t_lap.iloc[-1] if d.attrs.get("finished", True) else np.inf)
     for i, (name, d) in enumerate(laps.items()):
@@ -75,18 +102,7 @@ def log_race(laps: dict, track: T.Track, car: Car = None):
         rr.log(f"lines/{i + 1}_{_path(name)}", rr.LineStrips3D([pts], colors=[color], radii=0.03), static=True)
         rr.log(f"lines/{i + 1}_{_path(name)}/speed", rr.Points3D(pts[::5], colors=_speed_colors(d.speed.to_numpy()[::5], vmax),
                                                                 radii=0.06), static=True)
-        rr.log(f"{base}/body", rr.Boxes3D(centers=[((lf - lr) / 2, 0, r + 0.12)],
-                                         half_sizes=[(car.wheelbase / 2 + 0.45, 0.42, 0.14)],
-                                         colors=[color], labels=[f"{i + 1}"]), static=True)
-        rr.log(f"{base}/nose", rr.Boxes3D(centers=[(lf + 0.3, 0, r + 0.08)], half_sizes=[(0.2, 0.25, 0.08)],
-                                         colors=[color]), static=True)
-        for w, (x, y) in {"fl": (lf, car.track_front / 2), "fr": (lf, -car.track_front / 2),
-                          "rl": (-lr, car.track_rear / 2), "rr": (-lr, -car.track_rear / 2)}.items():
-            rr.log(f"{base}/wheel_{w}", rr.Transform3D(translation=(x, y, r)), static=True)
-            rr.log(f"{base}/wheel_{w}/steer/tire",
-                   rr.Cylinders3D(lengths=[0.2], radii=[r], colors=[(25, 25, 25)],
-                                  rotation_axis_angles=[rr.RotationAxisAngle(axis=(1, 0, 0), degrees=90)]),
-                   static=True)
+        _log_car(base, car, color, f"{i + 1}")
 
         t = d.t_lap.to_numpy()
         times = [rr.TimeColumn("lap time", duration=t)]
@@ -100,6 +116,10 @@ def log_race(laps: dict, track: T.Track, car: Car = None):
         series = {"speed (m/s)": d.speed.to_numpy(), "body slip (deg)": np.degrees(d.beta.to_numpy()),
                   "steering wheel (deg)": np.degrees(d.steering_wheel.to_numpy()),
                   "gap to fastest (s)": t - gap}
+        if "motor_torque" in d:                          # - : regen
+            series["motor torque (N m)"] = d.motor_torque.to_numpy()
+        if "brake" in d:
+            series["brake pedal"] = d.brake.to_numpy()
         for key, vals in series.items():
             path = f"plots/{_path(key)}/{i + 1}_{_path(name)}"
             rr.send_columns(path, indexes=times, columns=rr.Scalars.columns(scalars=vals))
@@ -108,7 +128,8 @@ def log_race(laps: dict, track: T.Track, car: Car = None):
         rrb.Horizontal(
             rrb.Spatial3DView(origin="/", contents=["/track/**", "/cars/**", "/lines/**"], name="race"),
             rrb.Vertical(*[rrb.TimeSeriesView(origin=f"/plots/{_path(k)}", name=k)
-                           for k in ("speed (m/s)", "gap to fastest (s)", "body slip (deg)", "steering wheel (deg)")]),
+                           for k in ("speed (m/s)", "gap to fastest (s)", "body slip (deg)", "steering wheel (deg)",
+                                     "motor torque (N m)", "brake pedal")]),
             column_shares=[3, 2]),
         rrb.TimePanel(state="expanded"),
         collapse_panels=True))

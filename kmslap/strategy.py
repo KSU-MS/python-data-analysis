@@ -10,10 +10,10 @@ strategies on top, run in parallel; the winners are checked with full events.
 
     accel strategy --out strategy/ [--regen] [--remote mathewos@desktop-17id03o-2]
 """
+from kmslap import dirs
 import itertools
 import math
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -93,8 +93,14 @@ def _map(fn, cands, workers):
                   f"{' DRS' if c['drs'] else ''}{' regen' if c.get('regen') else ''}" for c in cands]
         return _cluster.map(f"kmslap.strategy:{fn.__name__}", cands, labels=labels,
                             title=f"strategy: {fn.__name__}")
-    with ProcessPoolExecutor(workers) as ex:
-        return list(ex.map(fn, cands))
+    from kmslap import progress
+    with ProcessPoolExecutor(workers) as ex, progress.task(f"strategy {fn.__name__}: {len(cands)} candidates, endurance in the double-track model",
+                                                       total=len(cands)) as task:
+        out = []
+        for r in ex.map(fn, cands):
+            out.append(r)
+            task.advance()
+        return out
 
 
 def _run(cands, workers):
@@ -169,7 +175,7 @@ def tune(workers: int | None = None, soc_floor: float = SOC_FLOOR, regen: bool =
     return results, confirmed
 
 
-def run(out: str = "strategy", workers: int | None = None, regen: bool = False,
+def run(out: str | None = None, workers: int | None = None, regen: bool = False,
         remote: list[str] = (), soc_floor: float = SOC_FLOOR):
     """Tune, write candidates / confirmed CSVs and the trade-off plot into `out`."""
     import matplotlib
@@ -179,8 +185,7 @@ def run(out: str = "strategy", workers: int | None = None, regen: bool = False,
     from kmslap.models.envelope import gg_envelope
     from kmslap.car.params import Car
 
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = dirs.out("strategy", out)          # None: out/strategy
     gg_envelope(Car())       # solve / cache once before the workers need it
     global _cluster
     if remote:

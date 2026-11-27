@@ -1,0 +1,930 @@
+syntax = "proto3";
+
+message module1_temps {
+    float module_voltage_1 = 1;
+    float module_voltage_2 = 2;
+    float module_voltage_3 = 3;
+    float module_voltage_4 = 4;
+    float module_voltage_5 = 5;
+    float module_voltage_6 = 6;
+    float module_voltage_7 = 7;
+    float module_voltage_8 = 8;
+}
+
+message module2_temps {
+    float module_voltage_1 = 1;
+    float module_voltage_2 = 2;
+    float module_voltage_3 = 3;
+    float module_voltage_4 = 4;
+    float module_voltage_5 = 5;
+    float module_voltage_6 = 6;
+    float module_voltage_7 = 7;
+    float module_voltage_8 = 8;
+}
+
+message module3_temps {
+    float module_voltage_1 = 1;
+    float module_voltage_2 = 2;
+    float module_voltage_3 = 3;
+    float module_voltage_4 = 4;
+    float module_voltage_5 = 5;
+    float module_voltage_6 = 6;
+    float module_voltage_7 = 7;
+    float module_voltage_8 = 8;
+}
+
+message module4_temps {
+    float module_voltage_1 = 1;
+    float module_voltage_2 = 2;
+    float module_voltage_3 = 3;
+    float module_voltage_4 = 4;
+    float module_voltage_5 = 5;
+    float module_voltage_6 = 6;
+    float module_voltage_7 = 7;
+    float module_voltage_8 = 8;
+}
+
+message module5_temps {
+    float module_voltage_1 = 1;
+    float module_voltage_2 = 2;
+    float module_voltage_3 = 3;
+    float module_voltage_4 = 4;
+    float module_voltage_5 = 5;
+    float module_voltage_6 = 6;
+    float module_voltage_7 = 7;
+    float module_voltage_8 = 8;
+}
+
+message precharge_status {
+    int32 precharge_state = 1;
+    int32 precharge_errorCode = 2;
+}
+
+message acu_shutdown_status {
+    bool acu_imd_relay_state = 1;
+    bool acu_bms_relay_state = 2;
+    bool acu_imd_gpio_state = 3;
+    bool acu_bms_gpio_state = 4;
+    int32 acu_imd_pwm_frequency = 5;
+    int32 acu_imd_pwm_duty = 6;
+}
+
+message acu_board_voltage_readings {
+    float acu_sdc_voltage = 1;
+    float acu_sdc_current = 2;
+    float acu_glv_voltage = 3;
+    float acu_glv_current = 4;
+    float acu_5v_voltage = 5;
+    float acu_3v_voltage = 6;
+}
+
+message vcu_status {
+    string vcu_statemachine_state = 1;
+    bool vcu_brake_active = 2;
+    bool vcu_imd_ok_high = 3;
+    bool vcu_bms_ok_high = 4;
+    bool vcu_bspd_ok_high = 5;
+    bool vcu_accel_implausible = 6;
+    bool vcu_brake_implausible = 7;
+    bool vcu_bspd_current_high = 8;
+    bool vcu_bspd_brake_high = 9;
+    bool vcu_accel_brake_implausible = 10;
+    int32 vcu_max_torque = 11;
+}
+
+message vcu_pedals_travel {
+    float vcu_apps1_travel = 1;
+    float vcu_apps2_travel = 2;
+    float vcu_bse_travel = 3;
+}
+
+message vcu_pedal_readings {
+    int32 apps_1_raw = 1;
+    int32 apps_2_raw = 2;
+    int32 bse_raw = 3;
+}
+
+message vcu_board_readings_one {
+    int32 hall_OK = 1;
+    int32 bse_OK = 2;
+    int32 bspd_fault = 3;
+}
+
+message vcu_board_readings_two {
+    int32 vcu_ain_10 = 1;
+    int32 vcu_ain_11 = 2;
+    int32 vcu_ain_14 = 3;
+    int32 vcu_ain_15 = 4;
+    int32 vcu_ain_16 = 5;
+    int32 vcu_ain_17 = 6;
+}
+
+message vcu_distance_tracker_motor {
+    float vcu_motor_energy_wh = 1;
+    float vcu_motor_efficiency_instantaneous = 2;
+    int32 vcu_motor_distance_meters = 3;
+    float vcu_motor_efficiency_kmkwh = 4;
+}
+
+message vcu_set_parameter {
+    int32 vcu_target_parameter = 1;
+    int32 vcu_parameter_value = 2;
+}
+
+message vcu_pedal_threshold_settings {
+    int32 vcu_pedals_settings_MUX = 1;
+    int32 vcu_apps2_start_threshold = 2;
+    int32 vcu_apps1_end_threshold = 3;
+    int32 vcu_brake_active_threshold = 4;
+    int32 vcu_apps2_end_threshold = 5;
+    int32 vcu_apps1_ov_threshold = 6;
+    int32 vcu_apps1_uv_threshold = 7;
+    int32 vcu_apps2_ov_threshold = 8;
+    int32 vcu_apps2_uv_threshold = 9;
+    int32 vcu_apps1_start_threshold = 10;
+}
+
+message vcu_lifetime_distance_and_ontime {
+    int32 vcu_lifetime_ontime = 1;
+    int32 vcu_lifetime_distance = 2;
+}
+
+message dash_buttons {
+    bool dash_button1status = 1;
+    bool dash_button2status = 2;
+    bool dash_button3status = 3;
+    bool dash_button4status = 4;
+    bool dash_button5status = 5;
+    bool dash_button6status = 6;
+}
+
+message vectornav_position {
+    float vn_latitude = 1;
+    float vn_longitude = 2;
+}
+
+message vectornav_attitude {
+    float vn_yaw = 1;
+    float vn_roll = 2;
+    float vn_pitch = 3;
+}
+
+message vectornav_gyro {
+    float vn_W_x = 1;
+    float vn_W_y = 2;
+    float vn_W_z = 3;
+}
+
+message vectornav_velocity {
+    float vn_v_n = 1;
+    float vn_v_e = 2;
+    float vn_v_d = 3;
+}
+
+message vectornav_acceleration {
+    float vn_accel_x = 1;
+    float vn_accel_y = 2;
+    float vn_accel_z = 3;
+}
+
+message vectornav_time {
+    uint64 unix_time_ns = 1;
+}
+
+message vectornav_state {
+    int32 inertial_navigation_state = 1;
+}
+
+message an1_steeringpot {
+    int32 an1_uint12 = 1;
+    float angle = 2;
+    float angle_delta = 3;
+}
+
+message an1_front_brakepressure {
+    int32 an1_uint12 = 1;
+    int32 pressure_kPa = 2;
+    float pressure_delta = 3;
+}
+
+message an1_rear_brakepressure {
+    int32 an1_uint12 = 1;
+    int32 pressure_kPa = 2;
+    float pressure_delta = 3;
+}
+
+message an1_fl_shockpot {
+    int32 an1_uint12 = 1;
+    float length_mm = 2;
+    float length_delta = 3;
+}
+
+message an1_fr_shockpot {
+    int32 an1_uint12 = 1;
+    float length_mm = 2;
+    float length_delta = 3;
+}
+
+message an1_rl_shockpot {
+    int32 an1_uint12 = 1;
+    float length_mm = 2;
+    float length_delta = 3;
+}
+
+message an1_rr_shockpot {
+    int32 an1_uint12 = 1;
+    float length_mm = 2;
+    float length_delta = 3;
+}
+
+message an1_fl_loadcell {
+    int32 an1_uint12 = 1;
+    float force_N = 2;
+    float force_delta = 3;
+}
+
+message an1_fr_loadcell {
+    int32 an1_uint12 = 1;
+    float force_N = 2;
+    float force_delta = 3;
+}
+
+message an1_rl_loadcell {
+    int32 an1_uint12 = 1;
+    float force_N = 2;
+    float force_delta = 3;
+}
+
+message an1_rr_loadcell {
+    int32 an1_uint12 = 1;
+    float force_N = 2;
+    float force_delta = 3;
+}
+
+message an1_fl_wheelspeed {
+    int32 wheel_rpm = 1;
+    float wheel_rpm_delta = 2;
+}
+
+message an1_fr_wheelspeed {
+    int32 wheel_rpm = 1;
+    float wheel_rpm_delta = 2;
+}
+
+message an1_rl_wheelspeed {
+    int32 wheel_rpm = 1;
+    float wheel_rpm_delta = 2;
+}
+
+message an1_rr_wheelspeed {
+    int32 wheel_rpm = 1;
+    float wheel_rpm_delta = 2;
+}
+
+message an1_fl_tiretemp {
+    float inner_C = 1;
+    float middle_C = 2;
+    float outer_C = 3;
+    float average_C = 4;
+}
+
+message an1_fr_tiretemp {
+    float inner_C = 1;
+    float middle_C = 2;
+    float outer_C = 3;
+    float average_C = 4;
+}
+
+message an1_rl_tiretemp {
+    float inner_C = 1;
+    float middle_C = 2;
+    float outer_C = 3;
+    float average_C = 4;
+}
+
+message an1_rr_tiretemp {
+    float inner_C = 1;
+    float middle_C = 2;
+    float outer_C = 3;
+    float average_C = 4;
+}
+
+message an1_motor_temp {
+    int32 an1_uint12 = 1;
+    float temperature_C = 2;
+}
+
+message an1_coolant_temp {
+    int32 an1_uint12 = 1;
+    float temperature_C = 2;
+}
+
+message module1_status {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+    int32 board_temperature = 5;
+    int32 board_humidity = 6;
+}
+
+message module2_status {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+    int32 board_temperature = 5;
+    int32 board_humidity = 6;
+}
+
+message module3_status {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+    int32 board_temperature = 5;
+    int32 board_humidity = 6;
+}
+
+message module4_status {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+    int32 board_temperature = 5;
+    int32 board_humidity = 6;
+}
+
+message module5_status {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+    int32 board_temperature = 5;
+    int32 board_humidity = 6;
+}
+
+message acu_board_data {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+    int32 board_temperature = 5;
+    int32 board_humidity = 6;
+}
+
+message vcu_board_data {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+}
+
+message dash_board_data {
+    int32 firmware_version = 1;
+    int32 board_on_time_seconds = 2;
+    bool firmware_on_main = 3;
+    bool firmware_is_dirty = 4;
+}
+
+message vcu_traction_control {
+    string vcu_tc_selected = 1;
+    string vcu_tc_active = 2;
+    bool vcu_tc_no_vectornav = 3;
+    bool vcu_tc_no_motor_speed = 4;
+    bool vcu_tc_gear_ratio_fault = 5;
+    bool vcu_tc_waiting_for_lift = 6;
+    float vcu_tc_slip = 7;
+    float vcu_tc_speed = 8;
+    float vcu_tc_scale = 9;
+    float vcu_tc_grip = 10;
+}
+
+message vcu_pi_status {
+    string vcu_pi_mode = 1;
+    string vcu_pi_reason = 2;
+    int32 vcu_pi_rejected_frames = 3;
+    float vcu_pi_driver_torque = 4;
+    float vcu_pi_torque_sent = 5;
+    float vcu_pi_ceiling = 6;
+}
+
+message pi_torque_command {
+    float pi_torque_ceiling = 1;
+    bool pi_engage = 2;
+    int32 pi_counter = 3;
+    int32 pi_checksum = 4;
+}
+
+message pi_motor_torque_command {
+    float pi_motor_torque_fl = 1;
+    float pi_motor_torque_fr = 2;
+    float pi_motor_torque_rl = 3;
+    float pi_motor_torque_rr = 4;
+    bool pi_motor_engage = 5;
+    int32 pi_motor_counter = 6;
+    int32 pi_motor_checksum = 7;
+}
+
+message vcu_motor_torque_commands {
+    float vcu_motor_torque_fl = 1;
+    float vcu_motor_torque_fr = 2;
+    float vcu_motor_torque_rl = 3;
+    float vcu_motor_torque_rr = 4;
+}
+
+message vcu_uds_request {
+    uint64 vcu_uds_request_data = 1;
+}
+
+message vcu_uds_response {
+    uint64 vcu_uds_response_data = 1;
+}
+
+message inv_fl_erpm_duty_voltage {
+    int32 Actual_ERPM = 1;
+    float Actual_Duty = 2;
+    int32 Actual_InputVoltage = 3;
+}
+
+message inv_fl_ac_dc_current {
+    float Actual_ACCurrent = 1;
+    float Actual_DCCurrent = 2;
+}
+
+message inv_fl_temperatures {
+    float Actual_TempController = 1;
+    float Actual_TempMotor = 2;
+    string Actual_FaultCode = 3;
+}
+
+message inv_fl_foc {
+    float Actual_FOC_id = 1;
+    float Actual_FOC_iq = 2;
+}
+
+message inv_fl_misc {
+    int32 Actual_Throttle = 1;
+    int32 Actual_Brake = 2;
+    string Digital_output_4 = 3;
+    string Digital_output_3 = 4;
+    string Digital_output_2 = 5;
+    string Digital_output_1 = 6;
+    string Digital_input_4 = 7;
+    string Digital_input_3 = 8;
+    string Digital_input_2 = 9;
+    string Digital_input_1 = 10;
+    string Drive_enable = 11;
+    string Motor_temp_limit = 12;
+    string Motor_accel_limit = 13;
+    string Input_voltage_limit = 14;
+    string IGBT_temp_limit = 15;
+    string IGBT_accel_limit = 16;
+    string Drive_enable_limit = 17;
+    string DC_current_limit = 18;
+    string Capacitor_temp_limit = 19;
+    string Power_limit = 20;
+    string RPM_max_limit = 21;
+    string RPM_min_limit = 22;
+    float CAN_map_version = 23;
+}
+
+message inv_fl_setdriveenable {
+    string CMD_DriveEnable = 1;
+}
+
+message inv_fl_setaccurrent {
+    float CMD_TargetAcCurrent = 1;
+}
+
+message inv_fl_setbrakecurrent {
+    float CMD_TargetBrakeCurrent = 1;
+}
+
+message inv_fl_seterpm {
+    int32 CMD_TargetSpeed = 1;
+}
+
+message inv_fl_setposition {
+    float CMD_TargetPosition = 1;
+}
+
+message inv_fl_setrelcurrent {
+    float CMD_TargetRelativeCurrent = 1;
+}
+
+message inv_fl_setrelbrakecurrent {
+    float CMD_TargeRelativeBrakeCurrent = 1;
+}
+
+message inv_fl_setmaxaccurrent {
+    float CMD_MaxAcCurrent = 1;
+}
+
+message inv_fl_setmaxacbrakecurrent {
+    float CMD_MaxAcBrakeCurrent = 1;
+}
+
+message inv_fl_setmaxdccurrent {
+    float CMD_MaxDcCurrent = 1;
+}
+
+message inv_fl_setmaxdcbrakecurrent {
+    float CMD_MaxDcBrakeCurrent = 1;
+}
+
+message inv_fl_setdigoutput {
+    bool CMD_SetDigOutput1 = 1;
+    bool CMD_SetDigOutput2 = 2;
+    bool CMD_SetDigOutput3 = 3;
+    bool CMD_SetDigOutput4 = 4;
+}
+
+message inv_fl_targetiq {
+    int32 ControlMode = 1;
+    float TargetIq = 2;
+    float MotorPosition = 3;
+    int32 isMotorStill = 4;
+}
+
+message inv_fl_minmaxaccurrent {
+    float MaxAcCurrent = 1;
+    float AvailableMaxAcCurrent = 2;
+    float MinAcCurrent = 3;
+    float AvailableMinAcCurrent = 4;
+}
+
+message inv_fl_minmaxdccurrent {
+    float MaxDcCurrent = 1;
+    float AvailableMaxDcCurrent = 2;
+    float MinDcCurrent = 3;
+    float AvailableMinDcCurrent = 4;
+}
+
+message inv_fr_erpm_duty_voltage {
+    int32 Actual_ERPM = 1;
+    float Actual_Duty = 2;
+    int32 Actual_InputVoltage = 3;
+}
+
+message inv_fr_ac_dc_current {
+    float Actual_ACCurrent = 1;
+    float Actual_DCCurrent = 2;
+}
+
+message inv_fr_temperatures {
+    float Actual_TempController = 1;
+    float Actual_TempMotor = 2;
+    string Actual_FaultCode = 3;
+}
+
+message inv_fr_foc {
+    float Actual_FOC_id = 1;
+    float Actual_FOC_iq = 2;
+}
+
+message inv_fr_misc {
+    int32 Actual_Throttle = 1;
+    int32 Actual_Brake = 2;
+    string Digital_output_4 = 3;
+    string Digital_output_3 = 4;
+    string Digital_output_2 = 5;
+    string Digital_output_1 = 6;
+    string Digital_input_4 = 7;
+    string Digital_input_3 = 8;
+    string Digital_input_2 = 9;
+    string Digital_input_1 = 10;
+    string Drive_enable = 11;
+    string Motor_temp_limit = 12;
+    string Motor_accel_limit = 13;
+    string Input_voltage_limit = 14;
+    string IGBT_temp_limit = 15;
+    string IGBT_accel_limit = 16;
+    string Drive_enable_limit = 17;
+    string DC_current_limit = 18;
+    string Capacitor_temp_limit = 19;
+    string Power_limit = 20;
+    string RPM_max_limit = 21;
+    string RPM_min_limit = 22;
+    float CAN_map_version = 23;
+}
+
+message inv_fr_setdriveenable {
+    string CMD_DriveEnable = 1;
+}
+
+message inv_fr_setaccurrent {
+    float CMD_TargetAcCurrent = 1;
+}
+
+message inv_fr_setbrakecurrent {
+    float CMD_TargetBrakeCurrent = 1;
+}
+
+message inv_fr_seterpm {
+    int32 CMD_TargetSpeed = 1;
+}
+
+message inv_fr_setposition {
+    float CMD_TargetPosition = 1;
+}
+
+message inv_fr_setrelcurrent {
+    float CMD_TargetRelativeCurrent = 1;
+}
+
+message inv_fr_setrelbrakecurrent {
+    float CMD_TargeRelativeBrakeCurrent = 1;
+}
+
+message inv_fr_setmaxaccurrent {
+    float CMD_MaxAcCurrent = 1;
+}
+
+message inv_fr_setmaxacbrakecurrent {
+    float CMD_MaxAcBrakeCurrent = 1;
+}
+
+message inv_fr_setmaxdccurrent {
+    float CMD_MaxDcCurrent = 1;
+}
+
+message inv_fr_setmaxdcbrakecurrent {
+    float CMD_MaxDcBrakeCurrent = 1;
+}
+
+message inv_fr_setdigoutput {
+    bool CMD_SetDigOutput1 = 1;
+    bool CMD_SetDigOutput2 = 2;
+    bool CMD_SetDigOutput3 = 3;
+    bool CMD_SetDigOutput4 = 4;
+}
+
+message inv_fr_targetiq {
+    int32 ControlMode = 1;
+    float TargetIq = 2;
+    float MotorPosition = 3;
+    int32 isMotorStill = 4;
+}
+
+message inv_fr_minmaxaccurrent {
+    float MaxAcCurrent = 1;
+    float AvailableMaxAcCurrent = 2;
+    float MinAcCurrent = 3;
+    float AvailableMinAcCurrent = 4;
+}
+
+message inv_fr_minmaxdccurrent {
+    float MaxDcCurrent = 1;
+    float AvailableMaxDcCurrent = 2;
+    float MinDcCurrent = 3;
+    float AvailableMinDcCurrent = 4;
+}
+
+message msgid_0x6b1 {
+    float Pack_Current = 1;
+    float Pack_Inst_Voltage = 2;
+    float Pack_Open_Voltage = 3;
+    float Pack_Summed_Voltage = 4;
+}
+
+message msgid_0x6b2 {
+    int32 High_Temperature = 1;
+    int32 Low_Temperature = 2;
+    int32 Average_Temperature = 3;
+    float Avg_Cell_Voltage = 4;
+    float Low_Cell_Voltage = 5;
+}
+
+message msgid_0x6b3 {
+    float Pack_SOC = 1;
+}
+
+message msgid_0x6b4 {
+    bool DTC_P0AA6_High_Voltage_Isolation_Fault = 1;
+}
+
+message msgid_0x1806e7f4 {
+    float Maximum_Pack_Voltage = 1;
+    float Pack_CCL = 2;
+    bool DTC_P0A08_Charger_Safety_Relay_Fault = 3;
+}
+
+message msgid_0x1806e5f4 {
+    float Maximum_Pack_Voltage = 1;
+    float Pack_CCL = 2;
+    bool DTC_P0A08_Charger_Safety_Relay_Fault = 3;
+}
+
+message msgid_0x1806e9f4 {
+    float Maximum_Pack_Voltage = 1;
+    float Pack_CCL = 2;
+    bool DTC_P0A08_Charger_Safety_Relay_Fault = 3;
+}
+
+message m173_modulation_and_flux_info {
+    float INV_Modulation_Index = 1;
+    float INV_Flux_Weakening_Output = 2;
+    float INV_Id_Command = 3;
+    float INV_Iq_Command = 4;
+}
+
+message m172_torque_and_timer_info {
+    float INV_Commanded_Torque = 1;
+    float INV_Torque_Feedback = 2;
+    float INV_Power_On_Timer = 3;
+}
+
+message m194_read_write_param_response {
+    int32 INV_Parameter_Response_Addr = 1;
+    bool INV_Parameter_Response_Write_OK = 2;
+    int32 INV_Parameter_Response_Data = 3;
+}
+
+message m193_read_write_param_command {
+    int32 VCU_INV_Parameter_Address = 1;
+    bool VCU_INV_Parameter_RW_Command = 2;
+    int32 VCU_INV_Parameter_Data = 3;
+}
+
+message m192_command_message {
+    float VCU_INV_Torque_Command = 1;
+    int32 VCU_INV_Speed_Command = 2;
+    string VCU_INV_Direction_Command = 3;
+    string VCU_INV_Inverter_Enable = 4;
+    string VCU_INV_Inverter_Discharge = 5;
+    bool VCU_INV_Speed_Mode_Enable = 6;
+    int32 VCU_INV_Rolling_Counter = 7;
+    float VCU_INV_Torque_Limit_Command = 8;
+}
+
+message m171_fault_codes {
+    int32 INV_Post_Fault_Lo = 1;
+    int32 INV_Post_Fault_Hi = 2;
+    int32 INV_Run_Fault_Lo = 3;
+    int32 INV_Run_Fault_Hi = 4;
+}
+
+message m170_internal_states {
+    string INV_VSM_State = 1;
+    int32 INV_PWM_Frequency = 2;
+    string INV_Inverter_State = 3;
+    bool INV_Relay_1_Status = 4;
+    bool INV_Relay_2_Status = 5;
+    bool INV_Relay_3_Status = 6;
+    bool INV_Relay_4_Status = 7;
+    bool INV_Relay_5_Status = 8;
+    bool INV_Relay_6_Status = 9;
+    bool INV_Inverter_Run_Mode = 10;
+    bool INV_Self_Sensing_Assist_Enable = 11;
+    string INV_Inverter_Discharge_State = 12;
+    bool INV_Inverter_Command_Mode = 13;
+    int32 INV_Rolling_Counter = 14;
+    bool INV_Inverter_Enable_State = 15;
+    string INV_Burst_Model_Mode = 16;
+    bool INV_BMS_Limiting_Regen_Torque = 17;
+    bool INV_Key_Switch_Start_Status = 18;
+    bool INV_Inverter_Enable_Lockout = 19;
+    bool INV_Direction_Command = 20;
+    bool INV_BMS_Active = 21;
+    bool INV_BMS_Limiting_Motor_Torque = 22;
+    bool INV_Limit_Max_Speed = 23;
+    bool INV_Limit_Hot_Spot = 24;
+    bool INV_Low_Speed_Limiting = 25;
+    bool INV_Limit_Coolant_Derating = 26;
+    string INV_Limit_Stall_Burst_Model = 27;
+}
+
+message m169_internal_voltages {
+    float INV_Ref_Voltage_1_5 = 1;
+    float INV_Ref_Voltage_2_5 = 2;
+    float INV_Ref_Voltage_5_0 = 3;
+    float INV_Ref_Voltage_12_0 = 4;
+}
+
+message m168_flux_id_iq_info {
+    float INV_Vd_ff = 1;
+    float INV_Vq_ff = 2;
+    float INV_Id = 3;
+    float INV_Iq = 4;
+}
+
+message m167_voltage_info {
+    float INV_DC_Bus_Voltage = 1;
+    float INV_Output_Voltage = 2;
+    float INV_VAB_Vd_Voltage = 3;
+    float INV_VBC_Vq_Voltage = 4;
+}
+
+message m166_current_info {
+    float INV_Phase_A_Current = 1;
+    float INV_Phase_B_Current = 2;
+    float INV_Phase_C_Current = 3;
+    float INV_DC_Bus_Current = 4;
+}
+
+message m165_motor_position_info {
+    float INV_Motor_Angle_Electrical = 1;
+    int32 INV_Motor_Speed = 2;
+    float INV_Electrical_Output_Frequency = 3;
+    float INV_Delta_Resolver_Filtered = 4;
+}
+
+message m164_digital_input_status {
+    bool INV_Digital_Input_1 = 1;
+    bool INV_Digital_Input_2 = 2;
+    bool INV_Digital_Input_3 = 3;
+    bool INV_Digital_Input_4 = 4;
+    bool INV_Digital_Input_5 = 5;
+    bool INV_Digital_Input_6 = 6;
+    bool INV_Digital_Input_7 = 7;
+    bool INV_Digital_Input_8 = 8;
+}
+
+message m163_analog_input_voltages {
+    float INV_Analog_Input_1 = 1;
+    float INV_Analog_Input_2 = 2;
+    float INV_Analog_Input_3 = 3;
+    float INV_Analog_Input_4 = 4;
+    float INV_Analog_Input_5 = 5;
+    float INV_Analog_Input_6 = 6;
+}
+
+message m162_temperature_set_3 {
+    float INV_Coolant_Temp = 1;
+    float INV_Hot_Spot_Temp = 2;
+    float INV_Motor_Temp = 3;
+    float INV_Torque_Shudder = 4;
+}
+
+message m161_temperature_set_2 {
+    float INV_Control_Board_Temp = 1;
+    float INV_RTD1_Temperature = 2;
+    float INV_RTD2_Temperature = 3;
+    float INV_Stall_Burst_Model_Temp = 4;
+}
+
+message m160_temperature_set_1 {
+    float INV_Module_A_Temp = 1;
+    float INV_Module_B_Temp = 2;
+    float INV_Module_C_Temp = 3;
+    float INV_Gate_Driver_Board_Temp = 4;
+}
+
+message m174_firmware_info {
+    int32 INV_Project_Code_EEP_Ver = 1;
+    int32 INV_SW_Version = 2;
+    int32 INV_DateCode_MMDD = 3;
+    int32 INV_DateCode_YYYY = 4;
+}
+
+message m175_diag_data_message {
+    int32 INV_Diag_Record = 1;
+    int32 INV_Diag_Segment = 2;
+    int32 INV_Diag_PWM_Freq = 3;
+    float INV_Diag_Vq_Cmd = 4;
+    float INV_Diag_Id_cmd = 5;
+    float INV_Diag_Ic = 6;
+    int32 INV_Diag_Cos_Used = 7;
+    float INV_Diag_Gamma_Resolver = 8;
+    int32 INV_Diag_Run_Faults_Lo = 9;
+    float INV_Diag_Vd_Cmd = 10;
+    float INV_Diag_Mod_Index = 11;
+    float INV_Diag_Vdc = 12;
+    float INV_Diag_Ia = 13;
+    float INV_Diag_Gamma_Observer = 14;
+    int32 INV_Diag_Run_Faults_Hi = 15;
+    float INV_Diag_Vqs_Cmd = 16;
+    float INV_Diag_FW_Output = 17;
+    float INV_Diag_Iq_cmd = 18;
+    float INV_Diag_Ib = 19;
+    int32 INV_Diag_Sin_Used = 20;
+}
+
+message bms_current_limit {
+    int32 BMS_Max_Discharge_Current = 1;
+    int32 BMS_Max_Charge_Current = 2;
+}
+
+message m176_fast_info {
+    float INV_Fast_Torque_Command = 1;
+    float INV_Fast_Torque_Feedback = 2;
+    int32 INV_Fast_Motor_Speed = 3;
+    float INV_Fast_DC_Bus_Voltage = 4;
+}
+
+message m177_torque_capability {
+    float INV_Torque_Capability_Motor = 1;
+    float INV_Torque_Capability_Regen = 2;
+}
+
+message status {
+    float OutputVoltage = 1;
+    float OutputCurrent = 2;
+    string HWStatus = 3;
+    string Temperature = 4;
+    string InputVoltage = 5;
+    string State = 6;
+    string CommunicationState = 7;
+}
+

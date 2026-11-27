@@ -35,6 +35,7 @@ import numpy as np  # noqa: E402
 from matplotlib.animation import FuncAnimation, PillowWriter  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
+from kmslap import dirs
 from kmslap.models import accel1d as model  # noqa: E402
 from kmslap.vcu.firmware import FAULTS, FirmwareController, Sensors, read_log, replay, write_log  # noqa: E402
 from kmslap.car.params import G, Car  # noqa: E402
@@ -170,7 +171,9 @@ def drag_race_gif(runs: dict, car: Car, path, fps: int = 20, width_px: int = 960
         return []
 
     anim = FuncAnimation(fig, draw, frames=len(frames), interval=1000 / fps)
-    anim.save(path, writer=PillowWriter(fps=fps))
+    from kmslap import progress
+    with progress.task(f"rendering {Path(path).name}", total=len(frames)) as task:
+        anim.save(path, writer=PillowWriter(fps=fps), progress_callback=lambda i, n: task.update(completed=i + 1))
     plt.close(fig)
 
 
@@ -360,10 +363,9 @@ def _mermaid_bars(title, labels, values, y_label):
             f"  bar [{', '.join(f'{v:.1f}' for v in values)}]", "```"]
 
 
-def run(out: str = "report", plants: int = 20):
+def run(out: str | None = None, plants: int = 20):
     """Write the report into `out`; plants: Monte Carlo plants."""
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = dirs.out("report", out)          # None: out/report
     t0 = time.perf_counter()
     # accel: wing set open (lowest drag), and the controller configured to match
     car, motor = Car().open_aero(), MotorMap("228HV")

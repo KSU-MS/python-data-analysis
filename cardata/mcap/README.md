@@ -33,3 +33,18 @@ protoc --include_imports --descriptor_set_out=hytech.bin hytech.proto
 
 then update `SENSORS` in `mcap_log.py` for renamed messages (its test checks every
 mapped message is written in this schema).
+
+## Hub motor cars (`vehicles/`)
+
+`kmslap mcap <track> --drivetrain <variant>` writes a hub motor car's log in its own DBC
+and schema, `vehicles/<variant>/` (`car.dbc`, `hytech.proto`, `hytech.bin`):
+ksu-ms-dbc's per-vehicle DBCs (`gen_tool/vehicles.json`: the car's inverters by
+position, `inv_<position>_<message>`), through the same `dbc_to_proto.py` + protoc.
+`vehicles/SOURCE` has the revisions. Rebuild with:
+
+```sh
+cardata/mcap/build_vehicles.sh [ksu-ms-dbc checkout] [ksu_daq checkout]
+```
+
+The current car (`rwd_emrax`) keeps `car.dbc` above (ksu-ms-dbc `main`) until the
+`vcu-traction-pi` branch the vehicle DBCs come from is merged.
