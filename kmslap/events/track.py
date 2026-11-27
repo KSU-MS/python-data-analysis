@@ -75,6 +75,12 @@ class Track:
     w_right: np.ndarray
     cones: np.ndarray | None = None      # (n, 2) cone positions, the centerline's frame
     origin: tuple | None = None          # (lon, lat) of the frame's (0, 0): x east, y north
+    kind: str = "endurance"              # or "autocross": open, entry gate to exit gate, no laps
+    gates: np.ndarray | None = None      # (n, 2, 2) the gates' two sides, course order (autocross)
+
+    @property
+    def closed(self) -> bool:
+        return self.center.closed
 
     def limits(self, car_width: float = CAR_WIDTH, margin: float = EDGE_MARGIN):
         """(lo, hi): the car centre's lateral offset bounds (+ left) at each centerline
@@ -90,8 +96,10 @@ class Track:
 
     def resampled(self, step: float) -> "Track":
         ref = _resample(self.center, step)
-        at = lambda w: np.interp(ref.s, self.center.s, w, period=self.center.length)
-        return Track(self.name, ref, at(self.w_left), at(self.w_right), self.cones, self.origin)
+        period = self.center.length if self.closed else None
+        at = lambda w: np.interp(ref.s, self.center.s, w, period=period)
+        return Track(self.name, ref, at(self.w_left), at(self.w_right), self.cones, self.origin, self.kind,
+                     self.gates)
 
     def lonlat(self, x, y):
         """(lon, lat) of points in the track's frame (the frame load_line / cone_track
@@ -120,7 +128,48 @@ def michigan_ac18() -> Track:
     return cone_track(TRACKS / "michigan_ac18_cones.geojson")
 
 
+def michigan2025_autox() -> Track:
+    """FSAE Michigan 2025 autocross, from the coneLogger's cones (events/conelogger.py):
+    a series of gates from an entry gate to an exit gate.
+
+    WIP, not in TRACK_NAMES: the minimum-time solvers and the drives assume a loop, and
+    the course still has a kink near the exit gates (s ~915 m) and a few gates the
+    centerline barely clears (s ~424, ~602 m)."""
+    return gate_track(TRACKS / "michigan2025_autox.geojson")
+
+
+def gate_track(geojson, step: float = 0.5, smoothing: float = 0.3) -> Track:
+    """An open course from its gates (GeoJSON LineStrings, layer "gate", in course order)
+    and cones (Points). The centerline runs through the gates' middles (a smoothing spline,
+    so within ~smoothing m of them); its width at each gate is the gate's opening, and
+    between gates the edges run straight from one gate's sides to the next's."""
+    feats = json.loads(FilePath(geojson).read_text())
+    gates = sorted((f for f in feats["features"] if f["properties"].get("layer") == "gate"),
+                   key=lambda f: f["properties"]["order"])
+    cones_ll = np.array([f["geometry"]["coordinates"][:2] for f in feats["features"]
+                         if f["geometry"]["type"] == "Point"], float)
+    origin = tuple(cones_ll.mean(0))
+    G = np.array([np.column_stack(_project(np.array(g["geometry"]["coordinates"], float), origin)) for g in gates])
+    mids = G.mean(axis=1)
+    tck, _ = splprep([mids[:, 0], mids[:, 1]], s=len(mids) * smoothing ** 2, k=3)
+    dense = Path(*splev(np.linspace(0, 1, 50 * len(mids)), tck), closed=False)
+    center = _resample(dense, step)
+    nx, ny = normals(center)
+    gi = _nearest(center, mids[:, 0], mids[:, 1])
+    order = np.argsort(gi)
+    gi, G = gi[order], G[order]
+    off = (G[..., 0] - center.x[gi, None]) * nx[gi, None] + (G[..., 1] - center.y[gi, None]) * ny[gi, None]
+    left, right = off.max(axis=1), -off.min(axis=1)       # each side's post, from the centerline
+    wl = np.interp(center.s, center.s[gi], left)
+    wr = np.interp(center.s, center.s[gi], right)
+    cx, cy = _project(cones_ll, origin)
+    props = feats.get("properties", {})
+    return Track(props.get("name", FilePath(geojson).stem), center, wl, wr, np.column_stack([cx, cy]),
+                 origin, props.get("kind", "autocross"), G)
+
+
 TRACK_NAMES = {"michigan2026": michigan_2026, "ac18": michigan_ac18}
+TRACK_KINDS = {"michigan2026": "endurance", "ac18": "endurance"}    # michigan2025_autox: "autocross", WIP
 
 
 def _project(lonlat: np.ndarray, origin) -> tuple[np.ndarray, np.ndarray]:
@@ -234,7 +283,7 @@ def racing_line(path, width: float = TRACK_WIDTH, car_width: float = CAR_WIDTH,
     cache = dirs.BUILD / "racing_line" / f"{key}.npz"
     if cache.exists():
         z = np.load(cache)
-        return Path(z["x"], z["y"], closed=True)
+        return Path(z["x"], z["y"], closed=track.closed)
 
     track = track.resampled(step)
     center = track.center
@@ -246,20 +295,17 @@ def racing_line(path, width: float = TRACK_WIDTH, car_width: float = CAR_WIDTH,
         # how far this reference already is from the centerline (signed, along its normal)
         idx = _nearest(center, ref.x, ref.y)
         off = (ref.x - center.x[idx]) * nx + (ref.y - center.y[idx]) * ny
-        D = sparse.diags([np.ones(n), -2 * np.ones(n), np.ones(n)], [-1, 0, 1], shape=(n, n), format="lil")
-        D[0, n - 1] = 1
-        D[n - 1, 0] = 1
-        D = D.tocsr()
+        D = _second_differences(n, ref.closed)
         A = sparse.vstack([D @ sparse.diags(nx), D @ sparse.diags(ny)]).tocsr()
         b = -np.concatenate([D @ ref.x, D @ ref.y])
         res = lsq_linear(A, b, bounds=(lo[idx] - off, hi[idx] - off), method="trf", lsmr_tol="auto")
-        ref = _resample(Path(ref.x + res.x * nx, ref.y + res.x * ny, closed=True), step)
+        ref = _resample(Path(ref.x + res.x * nx, ref.y + res.x * ny, closed=track.closed), step)
     # hold the final line inside the limit (the passes measure offsets approximately)
     idx = _nearest(center, ref.x, ref.y)
     cnx, cny = normals(center)
     off = (ref.x - center.x[idx]) * cnx[idx] + (ref.y - center.y[idx]) * cny[idx]
     fix = np.clip(off, lo[idx], hi[idx]) - off
-    line = _resample(Path(ref.x + fix * cnx[idx], ref.y + fix * cny[idx], closed=True),
+    line = _resample(Path(ref.x + fix * cnx[idx], ref.y + fix * cny[idx], closed=track.closed),
                      path.s[1] - path.s[0])        # the centerline's finer spacing, for driving
     cache.parent.mkdir(parents=True, exist_ok=True)
     np.savez(cache, x=line.x, y=line.y)
@@ -275,10 +321,7 @@ def mincurv_offsets(ref: Path, lo, hi=None) -> np.ndarray:
 
     n = len(ref.x)
     nx, ny = normals(ref)
-    D = sparse.diags([np.ones(n), -2 * np.ones(n), np.ones(n)], [-1, 0, 1], shape=(n, n), format="lil")
-    D[0, n - 1] = 1
-    D[n - 1, 0] = 1
-    D = D.tocsr()
+    D = _second_differences(n, ref.closed)
     A = sparse.vstack([D @ sparse.diags(nx), D @ sparse.diags(ny)]).tocsr()
     b = -np.concatenate([D @ ref.x, D @ ref.y])
     if hi is None:
@@ -287,9 +330,25 @@ def mincurv_offsets(ref: Path, lo, hi=None) -> np.ndarray:
     return lsq_linear(A, b, bounds=(lo, hi), method="trf", lsmr_tol="auto").x
 
 
+def _second_differences(n: int, closed: bool):
+    """x[i-1] - 2 x[i] + x[i+1] for each point (wrapping on a loop; interior only on an
+    open path, whose ends have no curvature to give)."""
+    from scipy import sparse
+    D = sparse.diags([np.ones(n), -2 * np.ones(n), np.ones(n)], [-1, 0, 1], shape=(n, n), format="lil")
+    if closed:
+        D[0, n - 1] = 1
+        D[n - 1, 0] = 1
+        return D.tocsr()
+    return D.tocsr()[1:-1]
+
+
 def _resample(path: Path, step: float) -> Path:
-    """A closed path at equal spacing: a whole number of segments, so there's no short
-    closing segment (which would spike the curvature at the seam)."""
+    """A path at equal spacing. Closed: a whole number of segments, so there's no short
+    closing segment (which would spike the curvature at the seam). Open: both ends kept."""
+    if not path.closed:
+        n = max(int(round(path.length / step)), 2) + 1
+        s = np.linspace(0, path.length, n)
+        return Path(np.interp(s, path.s, path.x), np.interp(s, path.s, path.y), closed=False)
     n = max(int(round(path.length / step)), 3)
     s = np.linspace(0, path.length, n, endpoint=False)
     return Path(np.interp(s, path.s, path.x, period=path.length),
