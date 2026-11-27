@@ -113,7 +113,7 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
 
     r = car.tire_radius
     stop_x = STAGE + LENGTH + 0.5
-    plant = model.CompiledStep(motor, tire, model.params(car, motor, pack, tire, relaxation_length, dt),
+    plant = model.accel_step(motor, tire, model.params(car, motor, pack, tire, relaxation_length, dt),
                                model.initial_state(pack))
 
     t = accel = torque = 0.0
