@@ -168,6 +168,12 @@ class PathFollower:
     slide_lift: tuple = (math.radians(7), math.radians(12))   # rear slip angle: start lifting, fully off
     laps: int | None = None
     coast_time: float = 0.0
+    # brake feel with regen blending: braking torque per unit pedal is this much more
+    # than the friction brakes' (a driver adapts to the pedal). 0 = no blending.
+    brake_regen_fraction: float = 0.0
+    # pedal map with regen at its bottom (RegenPolicy.lift_torque, Nm): the driver's
+    # feedforward inverts it. 0 = the plain map.
+    pedal_regen_torque: float = 0.0
     done: bool = False
     laps_done: int = 0
     lap_times: list = field(default_factory=list)   # t at each start/finish crossing
@@ -228,8 +234,10 @@ class PathFollower:
         c = self.car
         resist = c.drag(vx) + c.crr * c.total_load(vx)
         force = c.mass * a_des + resist
-        pedal = max(0.0, force * c.tire_radius / (c.final_drive * c.driveline_eff * self.peak_torque))
-        brake = max(0.0, -force * c.tire_radius / c.max_brake_torque)
+        motor = force * c.tire_radius / (c.final_drive * c.driveline_eff)
+        lift = self.pedal_regen_torque
+        pedal = max(0.0, (motor + lift) / (self.peak_torque + lift))
+        brake = max(0.0, -force * c.tire_radius / (c.max_brake_torque * (1 + self.brake_regen_fraction)))
         lr = c.front_weight * c.wheelbase
         rear_slip = abs(math.atan2(obs["vy"] - obs["r"] * lr, max(vx, 0.5)))
         lo, hi = self.slide_lift
@@ -243,20 +251,68 @@ class PathFollower:
 
 @dataclass
 class DrsPolicy:
-    """When to open the wing: on the gas, nearly straight and fast enough; closed
-    whenever braking or cornering. Called by drive() at the driver rate.
+    """When to open the wing, from signals the VCU has: speed, lateral g, steering
+    wheel angle, pedal, brake. Open when fast, nearly straight and on the gas; close
+    on the brake, when the driver turns in (steering leads lateral g, so this closes
+    before the corner loads up), or when lateral g builds. Called by drive() at the
+    driver rate.
 
     min_speed: m/s (the old calc_drag notebook opened above 20 m/s).
     max_lateral: m/s^2; above this the car needs the downforce.
+    max_steering_wheel: rad; close when the driver steers more than this.
     min_pedal: open only while accelerating or holding speed.
     travel_time: s for the actuator to go fully open or closed.
     """
     min_speed: float = 12.0
     max_lateral: float = 0.3 * 9.81
+    max_steering_wheel: float = math.radians(180)
     min_pedal: float = 0.05
     travel_time: float = 0.2
 
     def __call__(self, obs, pedal, brake, steering_wheel) -> float:
         open_ = (obs["vx"] > self.min_speed and abs(obs["ay"]) < self.max_lateral
+                 and abs(steering_wheel) < self.max_steering_wheel
                  and pedal >= self.min_pedal and brake == 0)
         return 1.0 if open_ else 0.0
+
+
+@dataclass
+class RegenPolicy:
+    """Regen strategy in the VCU (rear wheels only: it's the motor). Passing one to
+    drive() turns regen on; without one the car never regens.
+
+    The VCU commands negative motor torque:
+      lift_torque           Nm at the motor with the pedal up: the bottom of the pedal
+                            map (one-pedal style), torque rising linearly from
+                            -lift_torque at pedal 0 to +peak at full pedal, so there's no
+                            switch to chatter on. 0 = coast, today's map.
+      brake_fraction        brake blending: regen at the rear wheels as this fraction of
+                            the friction brake torque (front + rear pressure sensors
+                            give it), on top of it (the hydraulics aren't by-wire)
+      max_rear_brake_share  blending is capped so rear friction + regen stays at most
+                            this share of all braking: regen is rear-only and shifts the
+                            effective bias rearward (rear lock-up, spins)
+      max_torque            Nm, the inverter's regen limit (it also respects current
+                            limits; the model applies the pack's charge limits)
+    Below Car.regen_min_speed there's no regen, fading in up to regen_fade_speed (in
+    the vehicle model).
+    """
+    lift_torque: float = 0.0
+    brake_fraction: float = 0.0
+    max_rear_brake_share: float = 0.55
+    max_torque: float = 230.0
+
+    def pedal_torque(self, pedal: float, peak: float) -> float:
+        """The pedal map with regen at its bottom (Nm at the motor, + drive)."""
+        return pedal * (peak + self.lift_torque) - self.lift_torque
+
+    def blend_torque(self, brake: float, car: Car) -> float:
+        """Brake blending regen magnitude (Nm, motor side) for brake pedal 0..1."""
+        friction = brake * car.max_brake_torque
+        rear = friction * (1 - car.brake_bias_front)
+        blend = self.brake_fraction * friction
+        if friction > 0:
+            s = self.max_rear_brake_share
+            blend = min(blend, max(0.0, (s * friction - rear) / (1 - s)))
+        # wheel torque -> motor torque through the final drive (regen side of the chain)
+        return blend * car.driveline_eff / car.final_drive

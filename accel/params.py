@@ -68,6 +68,13 @@ class Car:
     brake_bias_front: float = 0.65  # front share of brake torque, ESTIMATE
     max_brake_torque: float = 1500.0  # Nm summed over the wheels at full pedal, ESTIMATE
 
+    # Regen hardware (used only when drive() is given a RegenPolicy). Motor
+    # efficiency comes from the EMRAX map (powertrain.motor_efficiency_map).
+    regen_inverter_eff: float = 0.97     # AC -> DC when generating, ESTIMATE
+    regen_coulombic_eff: float = 0.99    # charge stored / charge pushed in, ESTIMATE
+    regen_min_speed: float = 5 / 3.6     # m/s, no regen below (FSAE-style 5 km/h)
+    regen_fade_speed: float = 8 / 3.6    # m/s, full regen above, linear fade between
+
     # Aero with the wing OPEN (DRS, or set open by hand). None = same as closed.
     # Drag: calc_drag.ipynb, Cd 0.682 on 0.961 m^2. Downforce: PLACEHOLDER from
     # Monash's FSAE DRS study (front wing -37%, rear wing -67% downforce) applied to

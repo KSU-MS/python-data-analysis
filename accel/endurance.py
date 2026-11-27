@@ -34,7 +34,7 @@ class EnduranceResult:
 
 
 def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_time: float = 0.0,
-              drs: DrsPolicy | None = None, pack: Pack | str = "cosmx600v", path=None,
+              drs: DrsPolicy | None = None, regen=None, pack: Pack | str = "cosmx600v", path=None,
               speed=None, driver_change: bool = True, soc0: float = 1.0,
               pack_temp0: float | None = None, log_period: float = 0.02, label: str = "") -> EnduranceResult:
     """Run the event: two stints of laps/2 from a standing start, the pack cooling
@@ -55,8 +55,10 @@ def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_tim
         if n > 0:   # driver change: stopped, no current, the pack cools toward ambient
             tau = pack.thermal_mass / pack.h_a if pack.h_a > 0 else math.inf
             temp = pack.ambient_c + (temp - pack.ambient_c) * math.exp(-DRIVER_CHANGE_S / tau)
-        follower = PathFollower(path, speed=speed, car=car, laps=stint_laps, coast_time=coast_time)
-        res = drive(follower, car, pack=pack, drs=drs, soc0=soc, pack_temp0=temp,
+        follower = PathFollower(path, speed=speed, car=car, laps=stint_laps, coast_time=coast_time,
+                                brake_regen_fraction=regen.brake_fraction if regen else 0.0,
+                                pedal_regen_torque=regen.lift_torque if regen else 0.0)
+        res = drive(follower, car, pack=pack, drs=drs, regen=regen, soc0=soc, pack_temp0=temp,
                     psi0=float(path.heading[0]), t_max=stint_laps * 200.0, log_period=log_period)
         d = res.df.copy()
         d["stint"] = n
@@ -77,7 +79,8 @@ def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_tim
         "laps": len(lap_times),
         "driving_time_s": float(sum(lap_times)),
         "best_lap_s": float(min(lap_times)) if lap_times else math.nan,
-        "energy_kwh": float(power.sum() * dt / 3.6e6),
+        "energy_kwh": float(power.sum() * dt / 3.6e6),                 # net, from the pack
+        "regen_kwh": float(-power.clip(upper=0).sum() * dt / 3.6e6),   # put back by regen
         "drag_energy_kwh": float((df.drag * df.speed).sum() * dt / 3.6e6),
         "soc_end": float(df.soc.iloc[-1]),
         "pack_temp_max_c": float(df.pack_temp.max()),

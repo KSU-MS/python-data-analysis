@@ -33,7 +33,7 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
           t_max: float = 60.0, driver_period: float = 0.01, log_period: float = 0.01,
           vx0: float = 0.0, soc0: float = 1.0, pack_temp0: float | None = None,
           relaxation_length: float = 0.15, relaxation_length_lat: float = 0.3,
-          drs=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0) -> DriveResult:
+          drs=None, regen=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0) -> DriveResult:
     """Run until the driver is done or t_max.
 
     The driver's pedal maps linearly to a torque request (0..motor peak), as the VCU's
@@ -45,6 +45,10 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     drs: a DRS policy (e.g. driver.DrsPolicy), called with the driver's view and
     inputs at the driver rate, returning the wing position it wants (0 closed, 1
     open); the wing moves there at its actuator rate. None: wing closed.
+
+    regen: a driver.RegenPolicy turns regen on: off throttle, its negative torque
+    command goes to the inverter (straight from the policy; the C++ controller only
+    handles drive torque so far). None: no regen, the model is motoring-only.
     """
     car = car or Car()
     motor = MotorMap(motor) if isinstance(motor, str) else motor
@@ -55,7 +59,7 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     plant = vehicle.car_step(
         motor, tire, pack,
         vehicle.params(car, motor, pack, tire, relaxation_length=relaxation_length,
-                       relaxation_length_lat=relaxation_length_lat, dt=dt),
+                       relaxation_length_lat=relaxation_length_lat, dt=dt, regen=regen),
         vehicle.initial_state(car, pack, vx=vx0, soc=soc0, pack_temp=pack_temp0, X=X0, Y=Y0,
                               psi=psi0))
 
@@ -82,7 +86,13 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
                 break
             if drs is not None:
                 wing_target = drs(obs, pedal, brake, sw)
-        t_req = pedal * motor.peak_torque
+        if regen is not None:
+            # pedal map with regen at its bottom; the drive part goes through TC, the
+            # regen part (and brake blending) straight to the inverter
+            t_map = regen.pedal_torque(pedal, motor.peak_torque)
+            t_req = max(t_map, 0.0)
+        else:
+            t_req = pedal * motor.peak_torque
         if controller is not None:
             omegas = [state[i] for i in iw]
             motor_rpm = 0.5 * (omegas[2] + omegas[3]) * gr * rpm_per_rads
@@ -90,6 +100,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
                                     out[itq], t_req)
         else:
             t_cmd = t_req
+        if regen is not None and t_map <= 0.0:
+            t_cmd = max(t_map - regen.blend_torque(brake, car), -regen.max_torque)
         wing += max(-wing_rate, min(wing_rate, wing_target - wing))
         plant(t_cmd, sw / car.steer_ratio, brake * car.max_brake_torque, wing)
         if t >= next_log - 1e-12:

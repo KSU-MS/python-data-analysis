@@ -204,8 +204,8 @@ python -m accel.endurance --out endurance.png
 # wing closed, wing set open by hand, DRS, wing closed + lift-and-coast
 ```
 
-The summary has driving time, lap times, energy, drag energy, final SOC, pack
-temperature and heat, and whether it finished. `PathFollower(coast_time=...)` is
+The summary has driving time, lap times, energy (net, and put back by regen), drag
+energy, final SOC, pack temperature and heat, and whether it finished. `PathFollower(coast_time=...)` is
 lift-and-coast (lift when a braking zone is coming). `Car()` is the current car with
 its wing closed; `Car().open_aero()` is the wing set open by hand (the accel tooling
 uses that). DRS switches between the two while driving: a model input (wing position
@@ -213,6 +213,26 @@ blending drag, downforce and aero balance) driven by a `DrsPolicy` (open when fa
 nearly straight, on the gas, not braking; actuator travel time). Aero drag is from
 python-endurance-drag-energy-calculator's calc_drag.ipynb; downforce is a placeholder
 (see below).
+
+**Regen** is off unless `drive()` / `endurance()` get a `RegenPolicy`; off, the model is
+exactly the motoring-only one. On, negative motor torque generates through the rear
+wheels (diff coast side, chain, the EMRAX efficiency map, inverter, cell coulombic
+efficiency), limited by the policy's torque setting, the motor map, a 5 km/h minimum
+speed (fading in to 8 km/h), and the pack's continuous charge current and cell max
+voltage from the COSMX datasheet. Two strategies, combinable: `lift_torque` puts regen
+at the bottom of the pedal map (one-pedal style: continuous, so the driver's speed
+control can't chatter between drive and regen), and `brake_fraction` blends regen on
+top of the friction brakes (from the front/rear pressure sensors), capped by
+`max_rear_brake_share` since regen is rear-only. Brake bias is a static `Car` setting.
+The C++ controller only handles drive torque so far: regen commands go straight to the
+inverter.
+
+**Strategy tuning:** `python -m accel.strategy --out strategy/ [--regen]` searches pace
+(fraction of the grip envelope), lift-and-coast, DRS policy parameters and (with
+`--regen`) regen strategies for the fastest event that still finishes with a 10% SOC
+reserve. Candidates are scored on 2 laps projected to the event (energy from the cells
+through the pack's voltage curve; checked against full events to ~0.3% SOC), in
+parallel, and the winners confirmed with full 18-lap events.
 
 ## VCU controller (sim + car)
 
@@ -286,10 +306,18 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 - **Brakes:** bias and maximum brake torque.
 - **Tires:** road grip scale vs the TTC fit (0.6 now), relaxation lengths.
 - **Pack:** COSMX cell open-circuit voltage curve (the repo's is adjusted from LG HE2,
-  not measured), cell mass and heat capacity, pack-to-ambient heat transfer (no
-  cooling), resistance vs temperature, BMS undervoltage limit.
-- **Powertrain:** inverter torque response, driveline efficiency, rolling resistance;
-  whether the car regens (not modeled).
+  not measured, and tops out at 4.2 V where the datasheet allows 4.28), heat capacity,
+  pack-to-ambient heat transfer (no cooling), resistance vs temperature and current (the
+  sim uses the datasheet's 1.5 mOhm high-rate DCIR; it's up to 5 mOhm at low rates), the
+  BMS's actual limits (the sim uses the datasheet's continuous ratings: 149.5 A
+  discharge, 65 A charge, 3.0-4.28 V; the 2 s peaks aren't modeled). Datasheet values are
+  in `datasheets/cosmx_95b0d0hd.toml`.
+- **Powertrain:** inverter torque response, driveline efficiency, rolling resistance,
+  inverter efficiency (regen uses 0.97), whether the inverter regens in field
+  weakening, the inverter's torque limit (230 Nm in the sim; the EMRAX 228 datasheet
+  allows 240 for a few seconds). The motor efficiency map is digitized from the EMRAX
+  datasheet (motoring; assumed the same generating); outside its 86% contour it's a
+  fitted loss model.
 - **Sensors / CAN:** VectorNav breakout send rates and latency; INS status on CAN; the
   VCU will need the DRS wing state too (its grip model depends on the downforce).
 
@@ -304,6 +332,7 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 | `accel_sim.ipynb` | main accel notebook |
 | `motor.py`, `battery.py`, `tire/` | motor dq model, pack model, Pacejka tire fits (used by `accel/`) |
 | `tracks/` | track lines (GeoJSON): FSAE Michigan 2026 EV endurance |
+| `datasheets/` | COSMX cell (image + `cosmx_95b0d0hd.toml`, read by `Pack`), EMRAX 228 PDF, its efficiency map digitized to CSV (`extract_emrax_efficiency.py`, with a check overlay) |
 | `cardata/`, `olapsims/`, `dynoruns/` | logged car data, OptimumLap export, dyno pulls |
 | other `*.ipynb`, `*.py` | older log analysis, motor curve, battery and wiring scripts; many read logs from paths that aren't in the repo |
 | `pyproject.toml`, `uv.lock` | Python dependencies and their lock (uv) |

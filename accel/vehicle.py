@@ -24,6 +24,13 @@ Body frame: x forward, y left, yaw counter-clockwise. Wheels FL, FR, RL, RR.
     pack          dSOC/dt = -I / capacity;  C dT/dt = I^2 R(T) - hA (T - ambient)
                   (no active cooling); current limited to hold the loaded cells at
                   the BMS undervoltage limit
+    regen         off unless enabled (params(regen=...)): then a negative torque
+                  command generates, rear wheels only (through the diff, coast side),
+                  limited by the regen torque setting, the motor map, a minimum speed
+                  with a fade band, the pack's charge current and cell max voltage;
+                  shaft -> pack through the motor efficiency map, the inverter's and
+                  the cells' coulombic efficiency. Off, the step is exactly the
+                  motoring-only one.
 
 Inputs per step: motor torque command (Nm), road wheel steer angle (rad, + left),
 total brake torque at the wheels (Nm), DRS wing position (0 closed .. 1 open: drag,
@@ -36,7 +43,7 @@ import numpy as np
 
 from . import model
 from .params import G, Car
-from .powertrain import MotorMap, Pack
+from .powertrain import MotorMap, Pack, motor_efficiency_map
 
 WHEELS = ("fl", "fr", "rl", "rr")
 STATES = (["X", "Y", "psi", "vx", "vy", "r"] + [f"omega_{w}" for w in WHEELS]
@@ -52,16 +59,20 @@ CAR_PARAMS = ["mass", "cg_height", "wheelbase", "front_weight", "tire_radius", "
               "wheel_inertia", "rear_driveline_inertia", "pitch_tau", "roll_tau", "torque_tau",
               "power_limit", "track_front", "track_rear", "yaw_inertia", "roll_stiffness_front",
               "diff_preload", "diff_lock_drive", "diff_lock_coast", "diff_slip_eps",
-              "brake_bias_front", "drs_cda_open", "drs_cla_open", "drs_aero_front_open"]
+              "brake_bias_front", "drs_cda_open", "drs_cla_open", "drs_aero_front_open",
+              "regen_inverter_eff", "regen_coulombic_eff", "regen_min_speed", "regen_fade_speed"]
 PARAMS = CAR_PARAMS + ["relaxation_length", "relaxation_length_lat", "tire_scale",
                        "rotor_inertia", "pack_series", "pack_capacity_ah", "pack_resistance_25c",
                        "pack_max_current", "pack_thermal_mass", "pack_h_a", "pack_ambient_c",
-                       "pack_resistance_temp_coeff", "pack_v_cell_min", "dt"]
+                       "pack_resistance_temp_coeff", "pack_v_cell_min", "pack_v_cell_max",
+                       "pack_max_charge_current", "regen_enabled", "regen_max_torque", "dt"]
 BRAKE_EPS = 2.0   # rad/s, brake torque fades to 0 on a stopped wheel (numerical)
 
 
 def params(car: Car, motor: MotorMap, pack: Pack, tire, *, relaxation_length: float = 0.15,
-           relaxation_length_lat: float = 0.3, dt: float = 2e-4) -> np.ndarray:
+           relaxation_length_lat: float = 0.3, dt: float = 2e-4, regen=None) -> np.ndarray:
+    """regen: a driver.RegenPolicy (or anything with max_torque) enables regen; None:
+    off, and the step is exactly the motoring-only one."""
     p = {k: getattr(car, k) for k in CAR_PARAMS}
     for k in ("cda", "cla", "aero_front"):       # no DRS: open = closed
         if p[f"drs_{k}_open"] is None:
@@ -72,7 +83,9 @@ def params(car: Car, motor: MotorMap, pack: Pack, tire, *, relaxation_length: fl
              pack_max_current=pack.max_current, pack_thermal_mass=pack.thermal_mass,
              pack_h_a=pack.h_a, pack_ambient_c=pack.ambient_c,
              pack_resistance_temp_coeff=pack.resistance_temp_coeff, pack_v_cell_min=pack.v_cell_min,
-             dt=dt)
+             pack_v_cell_max=pack.v_cell_max, pack_max_charge_current=pack.max_charge_current,
+             regen_enabled=0.0 if regen is None else 1.0,
+             regen_max_torque=0.0 if regen is None else regen.max_torque, dt=dt)
     return np.array([p[k] for k in PARAMS], dtype=float)
 
 
@@ -148,7 +161,33 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
     omega_m = omega_c * gr
     torque, bus_v, current = model._powertrain(pp, model._motor_max_torque(motor), t_lagged,
                                                omega_m, x["bus_v"])
-    t_c = torque * gr * p["driveline_eff"]
+
+    # --- regen: picked only when enabled and the command is negative, so with regen
+    # off every value below is the motoring branch's, bit for bit
+    regen_on = ca.logic_and(p["regen_enabled"] > 0, t_lagged < 0)
+    rpm = omega_m * model.RPM_PER_RADS
+    fade = _clamp((vx - p["regen_min_speed"])
+                  / ca.fmax(p["regen_fade_speed"] - p["regen_min_speed"], 1e-6), 0, 1)
+    t_gen = -ca.fmin(ca.fmin(-t_lagged, p["regen_max_torque"]),
+                     model._motor_max_torque(motor)(rpm, x["bus_v"])) * fade     # <= 0
+    rpms, torques, eff_map = motor_efficiency_map(motor.name)
+    motor_eff = ca.interpolant("motor_eff", "linear", [rpms, torques], eff_map.ravel(order="F"))
+    eff_gen = motor_eff(ca.vertcat(_clamp(rpm, rpms[0], rpms[-1]), _clamp(-t_gen, torques[0], torques[-1])))
+    to_dc = eff_gen * p["regen_inverter_eff"]
+    p_dc = t_gen * omega_m * to_dc                                     # <= 0: into the pack
+    # pack: P = V I with V = Voc - I R, I < 0; BMS limits charge current and the
+    # loaded cell voltage
+    i_req = (v_oc - ca.sqrt(v_oc * v_oc - 4 * r_pack * p_dc)) / (2 * r_pack)
+    i_floor = ca.fmax(-p["pack_max_charge_current"],
+                      ca.fmin(0, (v_oc - p["pack_series"] * p["pack_v_cell_max"]) / r_pack))
+    i_gen = ca.fmax(i_req, i_floor)
+    t_gen = ca.if_else(i_req < i_floor,
+                       (v_oc - i_gen * r_pack) * i_gen / ca.fmax(omega_m * to_dc, 1e-6), t_gen)
+    torque = ca.if_else(regen_on, t_gen, torque)
+    current = ca.if_else(regen_on, i_gen, current)
+    bus_v = ca.if_else(regen_on, v_oc - i_gen * r_pack, bus_v)
+    # at the diff: driving loses the chain's efficiency on the way out, regen on the way in
+    t_c = ca.if_else(torque >= 0, torque * gr * p["driveline_eff"], torque * gr / p["driveline_eff"])
 
     # --- wheel spin. Front: free rolling + brakes.
     jw = p["wheel_inertia"]
@@ -202,7 +241,8 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
         ax_filt=lag(x["ax_filt"], ax, p["pitch_tau"]),
         ay_filt=lag(x["ay_filt"], ay, p["roll_tau"]),
         t_lagged=t_lagged, bus_v=bus_v,
-        soc=x["soc"] - current * dt / (p["pack_capacity_ah"] * 3600),
+        soc=x["soc"] - ca.if_else(current < 0, current * p["regen_coulombic_eff"], current)
+        * dt / (p["pack_capacity_ah"] * 3600),
         pack_temp=x["pack_temp"] + dt * (heat - p["pack_h_a"] * (x["pack_temp"] - p["pack_ambient_c"]))
         / p["pack_thermal_mass"],
     )
@@ -220,8 +260,10 @@ def _clamp(v, lo, hi):
 def car_step(motor: MotorMap, tire, pack: Pack, param_vector, state0) -> model.CompiledStep:
     """step_function, compiled, for drive()'s loop."""
     key = model._motor_key(motor) + (tire.table_key_2d(),
-                                     model._hash_arrays(pack.ocv_soc, pack.ocv_cell))
+                                     model._hash_arrays(pack.ocv_soc, pack.ocv_cell),
+                                     model._hash_arrays(*motor_efficiency_map(motor.name)))
     here = Path(__file__)
     return model.CompiledStep("car_step", lambda: step_function(motor, tire, pack), key,
-                              [here, here.with_name("model.py"), here.with_name("tire.py")],
+                              [here, here.with_name("model.py"), here.with_name("tire.py"),
+                               here.with_name("powertrain.py")],
                               len(INPUTS), len(OUTPUTS), param_vector, state0)
