@@ -33,7 +33,7 @@ each sparse; epoch-ms `Time`). Reviewed for what's still relevant to the current
 
 | Folder | For |
 |---|---|
-| `7_6_aero_test_with_aero/`, `7_6_aero_test_no_aero/` | 6 July 2024 (KS7e), same day with and without aero. Parsed logs have VectorNav (velocity, accel, attitude), all four shock pots and wheel speeds, motor speed, front/rear brake pressure, steering: CdA from coast-downs or power vs speed, ClA and balance from shock deflection vs speed^2 (with spring / motion ratios). Pertinent if the current aero is close to 2024's |
+| `7_6_aero_test_with_aero/`, `7_6_aero_test_no_aero/` | **Used**: `kmslap aero` (`cardata/aero/`). 6 July 2024 (KS7e), same day with and without aero. Parsed logs have VectorNav (velocity, accel, attitude), all four shock pots and wheel speeds, motor speed, front/rear brake pressure, steering: CdA from coast-downs or power vs speed, ClA and balance from shock deflection vs speed^2 (with spring / motion ratios). Pertinent if the current aero is close to 2024's |
 
 Not pursued: the 2023 accumulator thermal tests (an old accumulator design), the 2023
 endurance / competition, regen-day and accel / g-g logs, the other dyno days (KS6e-era

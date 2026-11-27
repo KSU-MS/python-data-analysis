@@ -160,6 +160,13 @@ def dyno(out: str = "dyno"):
     run_all(out)
 
 
+@app.command()
+def aero(out: str = "aero"):
+    """2024 aero tests: CdA from coast-downs, ClA and balance from shock pots (validation.aero)."""
+    from kmslap.validation.aero import run
+    run(out)
+
+
 @app.command("pack-temps")
 def pack_temps(out: str = "pack",
                gif: Annotated[bool, typer.Option(help="also render the top-down heatmap GIFs (~1 min)")] = True):

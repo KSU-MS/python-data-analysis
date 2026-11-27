@@ -1,8 +1,9 @@
-"""Validation against car data: dyno pulls and the accumulator thermal tests."""
+"""Validation against car data: dyno pulls, accumulator thermal tests, aero tests."""
 import numpy as np
+import pandas as pd
 import pytest
 
-from kmslap.validation import dyno, pack_thermal
+from kmslap.validation import aero, dyno, pack_thermal
 
 
 def test_dyno_ks6e_matches_the_model():
@@ -37,3 +38,16 @@ def test_lumped_thermal_model_fits_the_no_fans_test():
     assert 5 < f.h_a < 25                       # passive pack, W/K
     assert 0.2 < f.resistance < 0.6             # ohm, 72s8p (datasheet-based 0.29)
     assert set(pack_thermal.LAYOUT.ravel()) == set(range(1, 73))
+
+
+def test_aero_tests():
+    from kmslap.car.params import Car
+    car = Car()
+    data = pd.concat([aero.load(n) for n in aero.runs()], ignore_index=True)
+    down = aero.downforce(data, car.mass, car.cg_height, car.wheelbase)
+    assert down.total("noaero") == pytest.approx(0.0, abs=0.3)     # no wings, ~no downforce
+    assert 1.2 < down.package < 2.3
+    assert 0.45 < down.package_balance < 0.7
+    drag = aero.coastdown(data, car.mass)
+    assert 0.25 < drag.package_cda < 0.6                           # the package's own drag
+    assert drag.cda["aero"] > drag.cda["noaero"]

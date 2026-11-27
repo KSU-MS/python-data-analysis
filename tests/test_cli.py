@@ -8,7 +8,7 @@ from kmslap.car.powertrain import MOTORS, PACKS
 
 runner = CliRunner()
 COMMANDS = [[], ["accel"], ["report"], ["report-diff"], ["viz"], ["drive"], ["endurance"], ["strategy"],
-            ["bench"], ["dyno"], ["pack-temps"], ["remote"], ["remote", "run"], ["remote", "setup"], ["remote", "fetch"],
+            ["bench"], ["dyno"], ["aero"], ["pack-temps"], ["remote"], ["remote", "run"], ["remote", "setup"], ["remote", "fetch"],
             ["remote", "log"], ["cluster"], ["cluster", "selftest"]]
 
 

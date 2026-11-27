@@ -377,8 +377,17 @@ faster than the desktop's WSL (Ryzen 7 5800XT, 16 threads); in parallel they're 
   fans: R ~1.3x the datasheet's, hA ~11.5 W/K for that pack; the with-fans test never
   cools down, so its hA isn't identified).
 
+- `aero.py` (`kmslap aero`): the KS7e aero tests of 6 July 2024 (`cardata/aero/`), with and
+  without the package. Downforce from the shock pots, calibrated in newtons from load
+  transfer (no spring rates needed): ClA 1.69 with aero (45% front), ~0 without, so the
+  package is ~1.7 (58% front). Drag from coast-downs: the package adds CdA ~0.4; the
+  absolute CdA (~1.2-1.45 with aero) depends on separating it from rolling / driveline drag
+  over 7-13 m/s, so it's soft. Speeds only reached 19 m/s; no DRS test. **Reported, not
+  applied**: `Car()` still has the placeholder aero below (ClA 5.0, CdA 2.08), which
+  these measurements say is ~3x too much downforce and too much drag.
+
 `legacy/README.md` reviews the old notebooks and scripts and indexes the team log
-archive (endurance, aero tests, regen, more dyno and thermal data) for what to validate next.
+archive for what to validate next.
 
 ## Car data to collect
 
@@ -387,8 +396,9 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 (sensors) are marked ESTIMATE / PLACEHOLDER / VERIFY in the code; `kmslap report`'s
 "what to measure next" ranks how much each matters for accel time.
 
-- **Aero, wing closed and open:** ClA and aero balance (only drag is ours, from
-  calc_drag.ipynb). The downforce is a placeholder copied from other teams: closed ClA
+- **Aero, wing closed and open:** measured for the 2024 package (`kmslap aero`: ClA ~1.7,
+  45% front; CdA ~1.2-1.45), not yet applied to `Car()`; DRS-open values still unknown.
+  Until applied: the drag is from calc_drag.ipynb. The downforce is a placeholder copied from other teams: closed ClA
   5.0 is our CdA times the L/D (2.4) of a published full-aero FSAE car
   ([ClA 5.47 / CdA 2.28](https://pidduuu.github.io/jekyll/update/2023/10/01/Justification-for-Aerodynamics.html));
   open ClA 3.0 applies [Monash's FSAE DRS](https://people.eng.unimelb.edu.au/imarusic/proceedings/19/387.pdf)
@@ -430,7 +440,7 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 | `accel_sim.ipynb` | main accel notebook |
 | `tracks/` | track lines (GeoJSON): FSAE Michigan 2026 EV endurance |
 | `datasheets/` | COSMX cell (image + `cosmx_95b0d0hd.toml`, read by `Pack`), EMRAX 228 PDF, its efficiency map digitized to CSV (`extract_emrax_efficiency.py`, with a check overlay) |
-| `cardata/`, `olapsims/` | logged car data (KS5e launches, KS6e accumulator tests, dyno pulls in `cardata/dyno/`), OptimumLap export |
+| `cardata/`, `olapsims/` | logged car data (KS5e launches, KS6e accumulator tests, dyno pulls in `cardata/dyno/`, 2024 aero tests in `cardata/aero/`), OptimumLap export |
 | `legacy/` | older log analysis, motor curve, battery and wiring notebooks and scripts (many read logs from paths that aren't in the repo); to review for what's worth bringing back |
 | `pyproject.toml`, `uv.lock` | Python dependencies and their lock (uv) |
 | `flake.nix`, `flake.lock` | Nix dev shell: builds the env from `uv.lock` via uv2nix, plus compilers and the Rerun viewer |
