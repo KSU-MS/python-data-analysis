@@ -4,5 +4,6 @@
 __pycache__/
 .ipynb_checkpoints/
 controller/build/
+build/
 .venv/
 report/

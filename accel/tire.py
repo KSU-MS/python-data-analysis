@@ -2,11 +2,19 @@
 
     fx(kappa, fz) -> longitudinal force (N)
     peak(fz)      -> (slip ratio at peak Fx, peak mu)
+
+and for accel.model, the same curve in CasADi with grip as a parameter:
+
+    scale                          the grip multiplier fx is built with
+    symbolic_fx(kappa, fz, scale)  CasADi expression equal to fx at that scale
+    table_key()                    identifies the curve shape (independent of scale)
 """
 import bisect
+import hashlib
 from functools import lru_cache
 from pathlib import Path
 
+import casadi as ca
 import numpy as np
 import pandas as pd
 
@@ -24,6 +32,7 @@ class CurveTire:
         shape = data["mu"].to_numpy() / data["mu"].max()
         self.mu_peak = mu_peak
         self._k = [float(k) for k in data["slip"]]
+        self._shape_mu = shape            # unscaled, for symbolic_fx / table_key
         self._mu = [float(m) * mu_peak for m in shape]
         self._k_peak = self._k[int(np.argmax(shape))]
 
@@ -41,6 +50,22 @@ class CurveTire:
 
     def peak(self, fz: float):
         return self._k_peak, self.mu_peak
+
+    @property
+    def scale(self) -> float:
+        return self.mu_peak
+
+    def _shape(self):
+        return np.array(self._k), self._shape_mu
+
+    def table_key(self) -> str:
+        return _hash("curve", *self._shape())
+
+    def symbolic_fx(self, kappa, fz, scale):
+        ks, shape = self._shape()
+        interp = ca.interpolant("mu_curve", "linear", [ks], shape)
+        k = ca.fmin(ca.fmax(ca.fabs(kappa), ks[0]), ks[-1])
+        return _signed(kappa) * interp(k) * scale * fz
 
 
 class PacejkaTire:
@@ -62,11 +87,14 @@ class PacejkaTire:
         self._k0, self._dk = self._k[0], self._k[1] - self._k[0]
         # mu = Fx / Fz, so interpolating across Fz stays well-behaved
         self._mu = []
+        self._unit = []                   # unscaled, for symbolic_fx / table_key
         self._peaks = []
         pos = k_grid >= 0
         for fz in fz_grid:
             fx, _, _ = model.s_r_sweep(float(fz), 0.0, k_grid, v=v)
-            mu = np.asarray(fx) / fz * scale
+            unit = np.asarray(fx) / fz
+            mu = unit * scale
+            self._unit.append(unit)
             self._mu.append([float(m) for m in mu])
             i = int(np.argmax(mu[pos]))
             self._peaks.append((float(k_grid[pos][i]), float(mu[pos][i])))
@@ -96,6 +124,31 @@ class PacejkaTire:
         i, di = self._fz_index(fz)
         (k0, m0), (k1, m1) = self._peaks[i], self._peaks[i + 1]
         return k0 + (k1 - k0) * di, m0 + (m1 - m0) * di
+
+    def _shape(self):
+        return np.array(self._k), np.array(self._fz), np.array(self._unit)
+
+    def table_key(self) -> str:
+        return _hash("pacejka", *self._shape())
+
+    def symbolic_fx(self, kappa, fz, scale):
+        ks, fzs, mu = self._shape()
+        # grid order (kappa, Fz); CasADi wants the first dimension fastest
+        interp = ca.interpolant("mu_pacejka", "linear", [ks, fzs], mu.ravel())
+        mu_k = interp(ca.vertcat(ca.fmin(ca.fmax(kappa, ks[0]), ks[-1]),
+                                 ca.fmin(ca.fmax(fz, fzs[0]), fzs[-1])))
+        return ca.if_else(fz <= 0, 0, mu_k * scale * fz)
+
+
+def _signed(kappa):
+    return ca.if_else(kappa >= 0, 1, -1)
+
+
+def _hash(*parts) -> str:
+    h = hashlib.sha1()
+    for part in parts:
+        h.update(part.tobytes() if isinstance(part, np.ndarray) else str(part).encode())
+    return h.hexdigest()[:16]
 
 
 @lru_cache(maxsize=1)

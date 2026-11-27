@@ -41,6 +41,11 @@
             rerun-sdk = prev.rerun-sdk.overrideAttrs (old: {
               buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.udev ];
             });
+            # plugins for commercial solvers (knitro, snopt, mosek, MATLAB, ...) link
+            # libraries we don't have; casadi only loads a plugin when it's asked for
+            casadi = prev.casadi.overrideAttrs (old: {
+              autoPatchelfIgnoreMissingDeps = true;
+            });
           };
           pythonSet = (pkgs.callPackage pyproject-nix.build.packages { inherit python; }).overrideScope
             (lib.composeManyExtensions [ pyproject-build-systems.overlays.default overlay wheelLibs ]);

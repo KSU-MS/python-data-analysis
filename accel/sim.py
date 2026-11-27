@@ -12,6 +12,10 @@ J_eff includes the motor rotor reflected through the final drive (J_rotor * gr^2
 which is the same order as the wheels themselves. The relaxation-length slip state
 keeps the tire force well defined at v = 0, where slip = (omega*r - v)/v is not.
 
+The plant step is defined once in CasADi (accel/model.py) and compiled to C; this
+module runs the loop around it: driver request, traction control or the VCU
+controller, logging.
+
 `quasi_static` is the joe-accel-style model: no wheel dynamics, force is
 min(motor, peak grip). It's the ideal-traction-control upper bound.
 """
@@ -20,6 +24,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from . import model
 from .control import SlipTC
 from .params import G, Car
 from .powertrain import MotorMap, Pack
@@ -106,23 +111,18 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     if controller is not None:
         controller.reset(car, motor)
 
-    r, gr, m = car.tire_radius, car.final_drive, car.mass
-    eta = car.driveline_eff
-    j_rear = 2 * car.wheel_inertia + car.rear_driveline_inertia + motor.rotor_inertia * gr * gr
-    m_eff = m + 2 * car.wheel_inertia / (r * r)   # front wheels spin up with the car
-    sigma = relaxation_length
+    r = car.tire_radius
     stop_x = STAGE + LENGTH + 0.5
+    plant = model.CompiledStep(motor, tire, model.params(car, motor, pack, tire, relaxation_length, dt),
+                               model.initial_state(pack))
 
-    t = x = v = omega = kappa = a_filt = t_lagged = accel = torque = 0.0
-    bus_v = pack.v_oc
+    t = accel = torque = 0.0
+    state = plant.state
     rows = []
     append = rows.append
     n = int(t_max / dt)
     for _ in range(n):
-        fz_r = car.rear_load(a_filt, v)
-        fz_tot = car.total_load(v)
-        fx = 2.0 * tire.fx(kappa, 0.5 * fz_r)
-
+        x, v, omega, kappa = state[0], state[1], state[2], state[3]
         slip = (omega * r - v) / max(v, slip_speed_floor)
         t_req = min(request(t, v), motor.peak_torque)
         if controller is not None:
@@ -131,32 +131,14 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
         else:
             scale = tc.update(t, slip) if tc is not None else 1.0
             t_cmd = t_req * scale
-        if car.torque_tau > 0:   # inverter torque response
-            t_lagged += dt * (t_cmd - t_lagged) / car.torque_tau
-        else:
-            t_lagged = t_cmd
-        omega_m = omega * gr
-        torque, bus_v, current = _powertrain_torque(car, motor, pack, t_lagged, omega_m, bus_v)
 
-        drag = car.drag(v)
-        rolling = car.crr * fz_tot if v > 0 or fx > 0 else 0.0
-        accel = (fx - drag - rolling) / m_eff
-        omega_dot = (torque * gr * eta - fx * r) / j_rear
-
-        append((t, x, v, accel, omega * r, slip, kappa, fx, fz_r, fz_tot - fz_r,
-                torque, t_req, scale, omega_m * RPM_PER_RADS, bus_v, current, drag))
-
-        # semi-implicit Euler
-        v = max(v + accel * dt, 0.0)
-        omega = max(omega + omega_dot * dt, 0.0)
-        kappa += dt * ((omega * r - v) - abs(v) * kappa) / sigma
-        x += v * dt
-        if car.pitch_tau > 0:
-            a_filt += dt * (accel - a_filt) / car.pitch_tau
-        else:
-            a_filt = accel
+        plant(t_cmd)
+        accel, fx, fz_r, fz_f, torque, current, drag, rpm = plant.out
+        state = plant.state
+        append((t, x, v, accel, omega * r, slip, kappa, fx, fz_r, fz_f,
+                torque, t_req, scale, rpm, state[6], current, drag))
         t += dt
-        if x > stop_x:
+        if state[0] > stop_x:
             break
 
     df = pd.DataFrame(rows, columns=[

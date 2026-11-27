@@ -26,6 +26,7 @@ dependencies = [
     "cantools>=39",
     "pyserial>=3.5",
     "requests>=2.31",
+    "casadi>=3.6",
 ]
 
 [dependency-groups]

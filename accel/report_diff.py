@@ -27,7 +27,10 @@ def _change(b, h, better, unit):
         return ("now finishes", 1) if b is None else ("no longer finishes", -1)
     if abs(h - b) <= REL_TOL * max(abs(b), 1e-9):
         return "", 0
-    sign = 1 if (h < b) == (better == "lower") else -1
+    if better not in ("lower", "higher"):
+        sign = 0   # informational, e.g. a sensitivity
+    else:
+        sign = 1 if (h < b) == (better == "lower") else -1
     if unit.startswith("%"):
         return f"{h - b:+.2f} pts", sign  # a % of a % reads badly
     rel = f" ({100 * (h / b - 1):+.1f}%)" if b else ""

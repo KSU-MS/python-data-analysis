@@ -142,7 +142,14 @@ LC0 Pacejka tire.
 - `tire.py`: `PacejkaTire` (TTC fits in `tire/`, default LC0) or `CurveTire` (tire/mu-vs-slip.csv shape, scaled).
 - `control.py`: slip-target PI traction control (Python, ideal sensors).
 - `launch.py`: launch torque strategies (driver ramp, grip-limited launch map, numerical optimizer).
-- `sim.py`: `simulate` (wheel spin dynamics) and `quasi_static` (ideal-TC bound, the joe-accel model).
+- `model.py`: the plant (chassis, rear wheel spin, tire relaxation, load transfer lag, inverter
+  lag, motor map, pack) as one [CasADi](https://web.casadi.org) model. `simulate` runs it as
+  generated C (compiled on first use into `build/casadi/`, ~1 s); `rollout()` unrolls it for
+  exact derivatives, e.g. `accel_time_sensitivity()` gives d(accel time)/d(every coefficient)
+  in one pass. Grip and every `Car` field are parameters, so one compiled model serves all
+  Monte Carlo plants.
+- `sim.py`: `simulate` (the loop around the model: driver request, TC or the VCU controller,
+  logging) and `quasi_static` (ideal-TC bound, the joe-accel model).
 - `compare.py`: reference data (OptimumLap run, KS5e launch logs) and matching sim setups;
   the validation plots are in `accel_sim.ipynb`.
 
@@ -184,7 +191,8 @@ tire force and load) with speed / accel / slip / torque / TC / learned mu plots 
 
 `python -m accel.report --out report/` runs the headline sims and writes a drag race GIF
 (rear wheels colored by slip), launch / final drive / robustness / controller-vs-truth /
-system ID / gear ratio check plots, a `summary.md` and a `metrics.json`. CI runs it on
+system ID / gear ratio check / sensitivity ("what to measure next": seconds of accel time
+each uncertain coefficient is worth) plots, a `summary.md` and a `metrics.json`. CI runs it on
 every push: the tables and charts are on the run's summary page, and the GIF and plots are
 in the `accel-report` artifact. On pull requests CI also runs the base branch's report and
 posts `python -m accel.report_diff base/metrics.json report/metrics.json` as a PR comment
@@ -199,6 +207,7 @@ The Rerun viewer sends anonymous usage stats by default (features used, not your
 |---|---|
 | `accel/` | accel event sim, controller bridge, Monte Carlo, system ID, visualization |
 | `controller/` | VCU launch/traction controller (C++), Makefile for sim and Teensy builds |
+| `build/` | generated, gitignored: the compiled CasADi model |
 | `tests/` | pytest suite |
 | `accel_sim.ipynb` | main accel notebook |
 | `motor.py`, `battery.py`, `tire/` | motor dq model, pack model, Pacejka tire fits (used by `accel/`) |

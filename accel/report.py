@@ -12,6 +12,8 @@ Writes into --out:
     sysid.png            log -> fit of a hidden car: tire force model vs measured
     gear_ratio_check.png controller set up for the wrong final drive, with and
                          without its gear ratio plausibility check
+    sensitivity.png      seconds of accel time each uncertain coefficient is worth
+                         (exact gradients through the CasADi model)
     summary.md           tables + Mermaid charts (GitHub renders these inline; CI
                          appends this to the job summary)
     metrics.json         headline numbers; `python -m accel.report_diff` compares
@@ -32,12 +34,14 @@ import numpy as np  # noqa: E402
 from matplotlib.animation import FuncAnimation, PillowWriter  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
+from . import model  # noqa: E402
 from .firmware import FAULTS, FirmwareController, Sensors, read_log, replay, write_log  # noqa: E402
 from .params import G, Car  # noqa: E402
-from .powertrain import MotorMap  # noqa: E402
+from .powertrain import PACKS, MotorMap, Pack  # noqa: E402
 from .sim import LENGTH, STAGE, quasi_static, simulate  # noqa: E402
 from .sysid import fit_plant  # noqa: E402
-from .uncertainty import RANGES, monte_carlo, sample_plants  # noqa: E402
+from .tire import default_tire  # noqa: E402
+from .uncertainty import ABSOLUTE, RANGES, monte_carlo, sample_plants  # noqa: E402
 
 COLORS = ["#e6504a", "#468ce6", "#5abe6e", "#e6aa32"]
 plt.rcParams.update({"figure.dpi": 100, "axes.grid": True, "grid.alpha": 0.3})
@@ -249,6 +253,34 @@ def _fig_gear_ratio(runs, true_fd, belief_fd, path):
     plt.close(fig)
 
 
+def _sensitivity(car, motor):
+    """(accel time, rows of (coefficient, nominal, range, dT/dp, seconds across range))
+    for an open-loop driver launch, ranked by seconds."""
+    tire = default_tire()
+    accel_time, grad = model.accel_time_sensitivity(car, motor, Pack(PACKS["cosmx600v"]), tire)
+    nominal = dict(zip(model.PARAMS, model.params(car, motor, Pack(PACKS["cosmx600v"]), tire,
+                                                  0.15, 2e-4)))
+    rows = []
+    for k, (lo, hi) in RANGES.items():
+        p = "tire_scale" if k == "grip" else k
+        if p not in grad:
+            continue   # sensor errors aren't model parameters
+        span = (hi - lo) if k in ABSOLUTE else (hi - lo) * nominal[p]
+        rows.append((k, nominal[p], (lo, hi), grad[p], abs(grad[p]) * span))
+    return accel_time, sorted(rows, key=lambda r: -r[4])
+
+
+def _fig_sensitivity(rows, path):
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    names = [r[0] for r in rows][::-1]
+    ax.barh(names, [r[4] * 1000 for r in rows][::-1], color=COLORS[1])
+    ax.set(xlabel="ms of accel time across the coefficient's uncertainty range",
+           title="What to measure: driver launch, no TC")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+
 def _mermaid_lines(title, x, series, y_label):
     if not all(np.isfinite(v).all() for v in series.values()):
         return ["_(chart skipped: a run didn't finish the 75 m; see fd_sweep.png)_"]
@@ -351,6 +383,20 @@ def main():
            else "**No fault latched.**"]
     metric("gear ratio fault: distance to detect", fault_x, "m")
     metric("gear ratio fault: accel time", ratio_runs["VCU"].accel_time, "s")
+
+    # sensitivity: exact gradients through the CasADi model
+    t_open, sens = _sensitivity(car, motor)
+    _fig_sensitivity(sens, out / "sensitivity.png")
+    md += ["", "## What to measure next", "",
+           f"Driver launch with no TC ({t_open:.3f} s): exact d(accel time)/d(coefficient) "
+           "through the CasADi model, times each coefficient's uncertainty range "
+           "(`uncertainty.RANGES`). Biggest first: the ones worth measuring.", "",
+           "| coefficient | nominal | range | d time / d coeff | across range |",
+           "|---|---|---|---|---|"]
+    for k, nom, (lo, hi), g, spread in sens:
+        rng = f"{lo:g} to {hi:g}" + ("" if k in ABSOLUTE else " x nominal")
+        md.append(f"| {k} | {nom:.4g} | {rng} | {g:+.4g} s/unit | {1000 * spread:.1f} ms |")
+        metric(f"sensitivity across range: {k}", 1000 * spread, "ms", better="neither")
 
     # log -> replay -> fit loop on a hidden car
     real = sample_plants(1, car, seed=123)[0]
