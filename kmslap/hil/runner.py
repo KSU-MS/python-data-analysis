@@ -147,7 +147,7 @@ class HilRunner:
                 pack, run = self._hil_messages(t, ov, sv)
                 if self.live is not None:
                     self.live.log("/sim/tf", mcap_log.car_pose(sv["X"], sv["Y"], sv["psi"], ns), ns)
-                    self.live.log("/sim/car", mcap_log.car_scene(self.car, inputs["steering_wheel"] / self.car.steer_ratio), ns)
+                    self.live.log("/sim/car", mcap_log.car_scene(self.car, inputs["steering_wheel"] / self.car.steer_ratio, ns), ns)
                     self.live.log("/sim/state", mcap_log.sim_state(row, self.car, self.lap, lap_t, last_lap), ns)
                     self.live.log("/hil/pack", pack, ns)
                     self.live.log("/hil/run", run, ns)

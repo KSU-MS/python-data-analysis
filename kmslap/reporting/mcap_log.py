@@ -318,16 +318,19 @@ def track_scene(track, car=None, plan_line=None):
 GOLD, BLACK, SILVER, WHITE = (0.99, 0.73, 0.19), (0.09, 0.09, 0.1), (0.75, 0.76, 0.78), (0.95, 0.95, 0.95)
 
 
-def car_scene(car, steer):
+def car_scene(car, steer, ns: int = 0):
     """Foxglove SceneUpdate of the car in its own frame (x forward, z up, origin under
     the CG), front wheels at `steer` (rad): an FSAE car from primitives (tub and nose,
-    sidepods, wings, roll hoop, driver, wheels with rims), team colours."""
+    sidepods, wings, roll hoop, driver, wheels with rims), team colours. Frame-locked and
+    stamped `ns`: Foxglove places an entity by its frame at its timestamp, so without
+    them the car stays where the car frame first was."""
     from foxglove_schemas_protobuf.SceneUpdate_pb2 import SceneUpdate
 
     lf, lr = car.cg_to_front, car.wheelbase - car.cg_to_front
     r = car.tire_radius
     up = SceneUpdate()
-    e = up.entities.add(id="car", frame_id="car")
+    e = up.entities.add(id="car", frame_id="car", frame_locked=True)
+    e.timestamp.FromNanoseconds(ns)
 
     def paint(p, rgb, a=1.0):
         p.color.r, p.color.g, p.color.b, p.color.a = *rgb, a
@@ -428,7 +431,9 @@ def layout() -> dict:
                 "showLegend": True, "legendDisplay": "floating", "foxglovePanelTitle": title}
     cfg = {
         "3D!sim": {"followTf": "car", "followMode": "follow-position",
-                   "scene": {"transforms": {"visible": False, "showLabel": False}},
+                   # no frame axes / the map -> car line across the track
+                   "scene": {"transforms": {"showLabel": False, "axisSize": 0, "lineWidth": 0}},
+                   "transforms": {"frame:car": {"visible": False}, "frame:map": {"visible": False}},
                    "topics": {"/sim/track": {"visible": True}, "/sim/car": {"visible": True}},
                    "cameraState": {"distance": 25, "perspective": True, "phi": 55, "thetaOffset": 90, "targetOffset": [0, 0, 0]},
                    "foxglovePanelTitle": "car (sim)"},
@@ -526,7 +531,7 @@ def write(d: pd.DataFrame, track, out, car: Car = None, plan_line=None,
     for k in j:
         ns = start_ns + int((t[k] - t[0]) * 1e9)
         events.append((ns, "/sim/tf", car_pose(d.X.iloc[k], d.Y.iloc[k], d.psi.iloc[k], ns)))
-        events.append((ns, "/sim/car", car_scene(car, float(d.steering_wheel.iloc[k]) / car.steer_ratio)))
+        events.append((ns, "/sim/car", car_scene(car, float(d.steering_wheel.iloc[k]) / car.steer_ratio, ns)))
         if track.origin is not None and k % 2 == 0:
             lon, lat = track.lonlat(float(d.X.iloc[k]), float(d.Y.iloc[k]))
             fix = LocationFix(latitude=float(lat), longitude=float(lon), frame_id="car")
