@@ -8,3 +8,6 @@ build/
 .venv/
 report/
 bench/
+/dyno/
+/pack/
+/strategy/

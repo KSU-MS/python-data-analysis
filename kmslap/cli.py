@@ -153,6 +153,21 @@ def bench(what: Bench, n: Annotated[int, typer.Option(help="strategy evaluations
     record(what.value, n, workers, remote, out)
 
 
+@app.command()
+def dyno(out: str = "dyno"):
+    """Dyno pulls vs the inverter logs and the motor model (validation.dyno)."""
+    from kmslap.validation.dyno import run_all
+    run_all(out)
+
+
+@app.command("pack-temps")
+def pack_temps(out: str = "pack",
+               gif: Annotated[bool, typer.Option(help="also render the top-down heatmap GIFs (~1 min)")] = True):
+    """KS6e accumulator thermal tests: top-down heatmaps, lumped model fit (validation.pack_thermal)."""
+    from kmslap.validation.pack_thermal import run
+    run(out, gif)
+
+
 # --- remote ---------------------------------------------------------------------------
 
 @remote_app.command("setup")

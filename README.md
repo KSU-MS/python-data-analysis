@@ -29,6 +29,7 @@ log analysis notebooks and scripts are in `legacy/`.
 - [Endurance and DRS](#endurance-and-drs)
 - [VCU controller (sim + car)](#vcu-controller-sim--car)
 - [Running jobs on another machine](#running-jobs-on-another-machine)
+- [Validation against car data](#validation-against-car-data)
 - [Car data to collect](#car-data-to-collect)
 - [Visualization](#visualization)
 - [Repo layout](#repo-layout)
@@ -125,7 +126,10 @@ kmslap --help                   # commands: accel report report-diff viz drive e
                                 # strategy bench remote cluster
 ```
 
-`python -m kmslap ...` is the same command.
+`python -m kmslap ...` is the same command. On NixOS with home-manager `~/.zshrc` is
+read-only, so `--install-completion` can't edit it: put `kmslap --show-completion zsh`'s
+output in `programs.zsh.initContent` instead (escape `${` as `''${`); it only runs
+`kmslap` on TAB, so it's harmless outside this repo.
 
 ```sh
 # accel times for a few final drives: ideal TC vs no TC vs TC
@@ -356,6 +360,25 @@ faster than the desktop's WSL (Ryzen 7 5800XT, 16 threads); in parallel they're 
 1.33 vs 1.28 strategy evaluations/s; the cluster ran both at 2.41/s, 93% of their sum
 (the rest is start-up and the last tasks finishing).
 
+## Validation against car data
+
+`kmslap/validation/` checks the models against the team's logs:
+
+- `compare.py`: KS5e launches and an OptimumLap run against the accel sim (`accel_sim.ipynb`).
+- `dyno.py` (`kmslap dyno`): dyno pulls (`cardata/dyno/`) against the inverter log of the
+  same pull, aligned by speed, and against the motor model. On the KS6e 2023 pull the
+  DC → wheels efficiency is 0.875 measured vs 0.870 from the model (motor map × inverter
+  × driveline), the fitted roller radius at FD 3.0 is the sim's 0.229 m, and the inverter's
+  torque feedback is within 5% of the dyno's. The 2024 228HV pull, on a pack sagging to
+  ~176 V, is 16% less efficient than the map: deep field weakening the map doesn't cover.
+- `pack_thermal.py` (`kmslap pack-temps`): the KS6e accumulator tests as top-down cell
+  heatmaps (GIF) and the sim's lumped pack thermal model fitted to them (0.4 K RMS without
+  fans: R ~1.3x the datasheet's, hA ~11.5 W/K for that pack; the with-fans test never
+  cools down, so its hA isn't identified).
+
+`legacy/README.md` reviews the old notebooks and scripts and indexes the team log
+archive (endurance, aero tests, regen, more dyno and thermal data) for what to validate next.
+
 ## Car data to collect
 
 TODO: everything the sim uses that hasn't been measured on the current car. Values in
@@ -406,7 +429,7 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 | `accel_sim.ipynb` | main accel notebook |
 | `tracks/` | track lines (GeoJSON): FSAE Michigan 2026 EV endurance |
 | `datasheets/` | COSMX cell (image + `cosmx_95b0d0hd.toml`, read by `Pack`), EMRAX 228 PDF, its efficiency map digitized to CSV (`extract_emrax_efficiency.py`, with a check overlay) |
-| `cardata/`, `olapsims/`, `dynoruns/` | logged car data, OptimumLap export, dyno pulls |
+| `cardata/`, `olapsims/` | logged car data (KS5e launches, KS6e accumulator tests, dyno pulls in `cardata/dyno/`), OptimumLap export |
 | `legacy/` | older log analysis, motor curve, battery and wiring notebooks and scripts (many read logs from paths that aren't in the repo); to review for what's worth bringing back |
 | `pyproject.toml`, `uv.lock` | Python dependencies and their lock (uv) |
 | `flake.nix`, `flake.lock` | Nix dev shell: builds the env from `uv.lock` via uv2nix, plus compilers and the Rerun viewer |
