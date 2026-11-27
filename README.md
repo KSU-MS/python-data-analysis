@@ -117,19 +117,20 @@ megabytes of plots.
 Everything runs through one command, `kmslap`, with tab completion for commands, options,
 choices (motors, packs) and Tailscale hosts. It's on PATH in the Nix dev shell (an
 editable install of this repo, so code edits apply immediately). Without Nix, `uv sync`
-installs it into `.venv/bin`: activate the venv to use it as `kmslap` (with completion),
-or prefix with `uv run`. Turn completion on once:
+installs it into `.venv/bin`: activate the venv to use it as `kmslap`, or prefix with
+`uv run`. Turn completion on once:
 
 ```sh
-kmslap --install-completion     # zsh / bash / fish; restart the shell
-kmslap --help                   # commands: accel report report-diff viz drive endurance
-                                # strategy bench remote cluster
+nix profile install .#completions   # Nix: zsh and bash, no rc file edits (works with a
+                                    # read-only home-manager .zshrc); new shells pick it up
+kmslap --install-completion         # without Nix: appends to your shell's rc file
+kmslap --help                       # commands: accel report report-diff viz drive endurance
+                                    # strategy bench dyno pack-temps remote cluster
 ```
 
-`python -m kmslap ...` is the same command. On NixOS with home-manager `~/.zshrc` is
-read-only, so `--install-completion` can't edit it: put `kmslap --show-completion zsh`'s
-output in `programs.zsh.initContent` instead (escape `${` as `''${`); it only runs
-`kmslap` on TAB, so it's harmless outside this repo.
+The completion only asks `kmslap` when you press TAB, so it's inert outside this repo's
+shell; `nix profile remove completions` takes it out. `python -m kmslap ...` is the same
+command.
 
 ```sh
 # accel times for a few final drives: ideal TC vs no TC vs TC

@@ -70,6 +70,18 @@
         in
         pythonSet.mkVirtualEnv "python-data-analysis-env" workspace.deps.all;
     in {
+      # tab completion for the `kmslap` command, without touching shell rc files:
+      # `nix profile install .#completions` puts it where zsh (via NIX_PROFILES'
+      # site-functions) and bash-completion look. It only runs `kmslap` on TAB, so
+      # it's inert outside this repo's shell. Regenerate completions/ with
+      # `kmslap --show-completion zsh|bash` if the command's name changes.
+      packages = forAll (pkgs: {
+        completions = pkgs.runCommand "kmslap-completions" { } ''
+          install -Dm644 ${./completions/_kmslap} $out/share/zsh/site-functions/_kmslap
+          install -Dm644 ${./completions/kmslap.bash} $out/share/bash-completion/completions/kmslap
+        '';
+      });
+
       devShells = forAll (pkgs: {
         default = let venv = pythonEnv pkgs; in pkgs.mkShell {
           # rerun: the viewer for kmslap/reporting/viz.py, first on PATH so it wins over the

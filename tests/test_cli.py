@@ -51,3 +51,14 @@ def test_bare_host_gets_the_default_user():
 
 def test_host_completion_includes_the_default():
     assert remote.DEFAULT_HOST in cli.complete_hosts("")
+
+
+def test_completion_protocol_used_by_completions_dir():
+    # completions/_kmslap (installed with `nix profile install .#completions`) asks
+    # kmslap through these variables; the answer is zsh completion code
+    r = runner.invoke(cli.app, [], prog_name="kmslap",
+                      env={"_KMSLAP_COMPLETE": "complete_zsh", "_TYPER_COMPLETE_ARGS": "kmslap st"})
+    assert "strategy" in r.output
+    from pathlib import Path
+    text = (Path(cli.__file__).resolve().parent.parent / "completions" / "_kmslap").read_text()
+    assert text.startswith("#compdef kmslap") and "_KMSLAP_COMPLETE=complete_zsh" in text

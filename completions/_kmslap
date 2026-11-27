@@ -1,0 +1,5 @@
+#compdef kmslap
+# zsh completion for kmslap, in autoload form: on a fpath directory before compinit
+# (`nix profile install .#completions` puts it there), zsh runs this on TAB. It asks
+# kmslap itself (Typer's completion protocol), so it's inert where kmslap isn't on PATH.
+eval $(env _TYPER_COMPLETE_ARGS="${words[1,$CURRENT]}" _KMSLAP_COMPLETE=complete_zsh kmslap)
