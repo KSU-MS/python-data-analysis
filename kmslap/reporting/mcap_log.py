@@ -403,13 +403,15 @@ def _states(db, d, car: Car = None):
     }
 
 
-def track_scene(track, car=None, plan_line=None):
-    """Foxglove SceneUpdate of the track (edges, cones, the planned line), frame 'map'."""
+def track_scene(track, car=None, plan_line=None, ns: int = 0, knocked=()):
+    """Foxglove SceneUpdate of the track (edges, cones, the planned line), frame 'map'.
+    knocked: indices of cones hit so far, drawn on their side in red."""
     from foxglove_schemas_protobuf.SceneUpdate_pb2 import SceneUpdate
     from foxglove_schemas_protobuf.LinePrimitive_pb2 import LinePrimitive
 
     up = SceneUpdate()
     e = up.entities.add(id="track", frame_id="map")
+    e.timestamp.FromNanoseconds(ns)
     lx, ly, rx, ry = track.edges()
     for ex, ey in ((lx, ly), (rx, ry)):
         ln = e.lines.add(type=LinePrimitive.LINE_LOOP, thickness=0.08)
@@ -422,13 +424,76 @@ def track_scene(track, car=None, plan_line=None):
         for x, y in zip(plan_line.x[::2], plan_line.y[::2]):
             ln.points.add(x=float(x), y=float(y), z=0.01)
     if track.cones is not None:
-        for x, y in track.cones:
+        from kmslap.reporting.car_model import quat
+        knocked = set(knocked)
+        for i, (x, y) in enumerate(track.cones):
             cy = e.cylinders.add(bottom_scale=1.0, top_scale=0.15)
-            cy.pose.position.x, cy.pose.position.y, cy.pose.position.z = float(x), float(y), 0.35
-            cy.pose.orientation.w = 1.0
+            if i in knocked:                                 # on its side, red
+                cy.pose.position.x, cy.pose.position.y, cy.pose.position.z = float(x), float(y), 0.15
+                cy.pose.orientation.x, cy.pose.orientation.y, cy.pose.orientation.z, cy.pose.orientation.w = (
+                    float(v) for v in quat("x", np.pi / 2))
+                cy.color.r, cy.color.g, cy.color.b, cy.color.a = 0.9, 0.1, 0.1, 1.0
+            else:
+                cy.pose.position.x, cy.pose.position.y, cy.pose.position.z = float(x), float(y), 0.35
+                cy.pose.orientation.w = 1.0
+                cy.color.r, cy.color.g, cy.color.b, cy.color.a = 0.95, 0.55, 0.15, 1.0
             cy.size.x, cy.size.y, cy.size.z = 0.3, 0.3, 0.7
-            cy.color.r, cy.color.g, cy.color.b, cy.color.a = 0.95, 0.55, 0.15, 1.0
     return up
+
+
+def penalty_events(d: pd.DataFrame, track, car: Car, start_ns: int, plan_line=None) -> list:
+    """(time ns, topic, protobuf) for each FSAE penalty as it happens: a hit cone tips
+    over red (/sim/track updated) with a label (/sim/penalties); off course, a marker
+    where the car left; each a line on /sim/events (Foxglove's log panel)."""
+    from foxglove_schemas_protobuf.Log_pb2 import Log
+    from foxglove_schemas_protobuf.SceneUpdate_pb2 import SceneUpdate
+    from kmslap.events import track as T
+
+    t = d.t.to_numpy()
+    run = np.flatnonzero(t >= 0)
+    if not len(run):
+        return []
+    X, Y, psi = d.X.to_numpy()[run], d.Y.to_numpy()[run], d.psi.to_numpy()[run]
+    ns_at = lambda k: start_ns + int((t[run[k]] - t[0]) * 1e9)
+    cn = track.center
+    events, knocked = [], []
+
+    def label(eid, x, y, text, rgb, ns, sphere=False):
+        up = SceneUpdate()
+        e = up.entities.add(id=eid, frame_id="map")
+        e.timestamp.FromNanoseconds(ns)
+        tx = e.texts.add(text=text, billboard=True, font_size=14.0, scale_invariant=True)
+        tx.pose.position.x, tx.pose.position.y, tx.pose.position.z = float(x), float(y), 1.2
+        tx.pose.orientation.w = 1.0
+        tx.color.r, tx.color.g, tx.color.b, tx.color.a = *rgb, 1.0
+        if sphere:
+            sp = e.spheres.add()
+            sp.pose.position.x, sp.pose.position.y, sp.pose.position.z = float(x), float(y), 0.2
+            sp.pose.orientation.w = 1.0
+            sp.size.x = sp.size.y = sp.size.z = 1.2
+            sp.color.r, sp.color.g, sp.color.b, sp.color.a = *rgb, 0.35
+        return up
+
+    def log(ns, text):
+        m = Log(level=Log.WARNING, message=text, name="penalties")
+        m.timestamp.FromNanoseconds(ns)
+        return m
+
+    for i, k in sorted(T.cone_hits(track, X, Y, psi, car), key=lambda h: h[1]):
+        ns = ns_at(k)
+        knocked.append(i)
+        cx, cy = track.cones[i]
+        s_m = float(cn.s[T._nearest(cn, [cx], [cy])[0]])
+        events.append((ns, "/sim/track", track_scene(track, car, plan_line, ns, knocked)))
+        events.append((ns, "/sim/penalties", label(f"cone_{i}", cx, cy, "cone +2 s", (0.95, 0.2, 0.2), ns)))
+        events.append((ns, "/sim/events", log(ns, f"t {t[run[k]]:.1f} s: cone {i} hit at s = {s_m:.0f} m (+2 s)")))
+    for n, k in enumerate(T.off_course(track, X, Y, psi, car)):
+        ns = ns_at(k)
+        s_m = float(cn.s[T._nearest(cn, [X[k]], [Y[k]])[0]])
+        events.append((ns, "/sim/penalties", label(f"off_{n}", X[k], Y[k], "off course +20 s", (1.0, 0.3, 0.0), ns,
+                                                    sphere=True)))
+        events.append((ns, "/sim/events", log(ns, f"t {t[run[k]]:.1f} s: off course at s = {s_m:.0f} m (+20 s)")))
+    return events
 
 
 
@@ -523,7 +588,8 @@ def layout() -> dict:
                    # no frame axes / the map -> car line across the track
                    "scene": {"transforms": {"showLabel": False, "axisSize": 0, "lineWidth": 0}},
                    "transforms": {"frame:car": {"visible": False}, "frame:map": {"visible": False}},
-                   "topics": {"/sim/track": {"visible": True}, "/sim/car": {"visible": True}},
+                   "topics": {"/sim/track": {"visible": True}, "/sim/car": {"visible": True},
+                              "/sim/penalties": {"visible": True}},
                    "cameraState": {"distance": 25, "perspective": True, "phi": 55, "thetaOffset": 90, "targetOffset": [0, 0, 0]},
                    "foxglovePanelTitle": "car (sim)"},
         "map!sim": {"topicColors": {}, "disabledTopics": [], "foxglovePanelTitle": "where"},
@@ -539,12 +605,15 @@ def layout() -> dict:
                            "msgid_0x6b3_data.Pack_SOC"),
         "Plot!g": plot("g", "/sim/state.ax_g", "/sim/state.ay_g"),
         "Plot!vn": plot("VectorNav accel (m/s^2)", "vectornav_acceleration_data.vn_accel_x", "vectornav_acceleration_data.vn_accel_y"),
+        "RosOut!events": {"topicToRender": "/sim/events", "foxglovePanelTitle": "penalties"},
         "StateTransitions!vcu": {"paths": [{"value": "vcu_status_data.vcu_statemachine_state", "timestampMethod": "receiveTime"},
                                            {"value": "m170_internal_states_data.INV_VSM_State", "timestampMethod": "receiveTime"}]},
     }
     tree = {"direction": "row", "splitPercentage": 55,
             "first": {"direction": "column", "splitPercentage": 65, "first": "3D!sim",
-                      "second": {"direction": "row", "first": "map!sim", "second": "StateTransitions!vcu"}},
+                      "second": {"direction": "row", "first": "map!sim",
+                                 "second": {"direction": "column", "first": "StateTransitions!vcu",
+                                            "second": "RosOut!events"}}},
             "second": {"direction": "row",
                        "first": {"direction": "column", "first": "Plot!speed",
                                  "second": {"direction": "column", "first": "Plot!pedals",
@@ -639,7 +708,8 @@ def write(d: pd.DataFrame, track, out, car: Car = None, plan_line=None,
         events.append((ns, "/sim/state", sim_state(d.iloc[k], car, lap_no[k], lap_t[k], last)))
     for ts, topic, pb in extra_events:
         events.append((start_ns + int((ts - t[0]) * 1e9), topic, pb))
-    events.append((start_ns, "/sim/track", track_scene(track, car, plan_line)))
+    events.append((start_ns, "/sim/track", track_scene(track, car, plan_line, start_ns)))
+    events += penalty_events(d, track, car, start_ns, plan_line)
     events.sort(key=lambda e: e[0])
     counts = {}
     with open(out, "wb") as f:

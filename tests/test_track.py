@@ -190,3 +190,27 @@ def test_mcap_hub_motor_cars_log_their_inverters(tmp_path, name):
         assert last[speed_topic].actual_velocity == pytest.approx(motor_rpm, rel=0.05)
     cmds = last["vcu_motor_torque_commands_data"]
     assert cmds.vcu_motor_torque_fl + cmds.vcu_motor_torque_fr + cmds.vcu_motor_torque_rl + cmds.vcu_motor_torque_rr > 0
+
+
+def test_mcap_marks_cone_hits_when_they_happen(tmp_path):
+    from mcap.reader import make_reader
+    from mcap_protobuf.decoder import DecoderFactory
+    from kmslap.car.params import Car
+    from kmslap.driving.drive import drive
+    from kmslap.driving.follower import PathFollower
+    from kmslap.reporting import mcap_log
+
+    track = T.constant_width(oval(), 6.0)
+    c = track.center
+    k = len(c.s) // 8                                     # a cone on the line, one well clear
+    track.cones = np.array([[c.x[k], c.y[k]], [c.x[k] + 50.0, c.y[k] + 50.0]])
+    f = PathFollower(c, speed=12.0, car=Car(), laps=1)
+    res = drive(f, Car(), psi0=float(c.heading[0]), t_max=8.0, log_period=0.01)
+    assert [i for i, _ in T.cone_hits(track, res.df.X, res.df.Y, res.df.psi)] == [0]
+    counts = mcap_log.write(res.df, track, tmp_path / "sim.mcap", preroll_s=1.0, start_ns=1_749_823_200_000_000_000)
+    assert counts["/sim/events"] == 1 and counts["/sim/penalties"] == 1
+    assert counts["/sim/track"] == 2                        # the track, then with the cone knocked over
+    with open(tmp_path / "sim.mcap", "rb") as fh:
+        r = make_reader(fh, decoder_factories=[DecoderFactory()])
+        logs = [m for _, ch, _, m in r.iter_decoded_messages(topics=["/sim/events"])]
+    assert "cone 0 hit" in logs[0].message and "+2 s" in logs[0].message
