@@ -15,5 +15,9 @@ bench/
 /sim/
 /hil/
 
-# DTI kit documents: vendor documentation, kept local until it's decided they can go in a public repo
-/datasheets/DTI F-SiC Documents/
+# DTI kit documents (public on DTI's site): the large ones stay local
+/datasheets/DTI F-SiC Documents/*.exe
+/datasheets/DTI F-SiC Documents/*.step
+/datasheets/DTI F-SiC Documents/**/*.step
+/datasheets/DTI F-SiC Documents/*Application_Manual*
+/datasheets/DTI F-SiC Documents/**/*Application_Manual*
