@@ -3,7 +3,12 @@ the PathFollower with the plan's feedforward in the time-domain car, scored for 
 penalties, the flying lap saved (reporting/runs) to race against other versions.
 
     kmslap laptime ac18 --grip 0.85 --margin 0.35
+    kmslap laptime ac18 --drivetrain 4wd_dti --torque-mode qp
     kmslap race ac18
+
+A drivetrain variant (car/drivetrain.py) plans with its own mass, weight split and CG;
+the plan's model still drives the rear axle only (WIP), so a hub car's plan is a
+rear-drive car's line and speeds, driven with all its motors.
 """
 import dataclasses
 import hashlib
@@ -44,13 +49,18 @@ def plan(track: T.Track, grip: float = 0.85, margin: float = T.EDGE_MARGIN, step
 
 def run(track_name: str = "michigan2026", grip: float = 0.85, margin: float = T.EDGE_MARGIN,
         step: float = 2.0, label: str | None = None, verbose: bool = False,
-        width: float | None = None) -> dict:
-    """width: the track's width (m), for a track that's a line only (michigan2026)."""
+        width: float | None = None, drivetrain: str = "rwd_emrax", torque_mode: str = "qp",
+        inverters: bool = False) -> dict:
+    """width: the track's width (m), for a track that's a line only (michigan2026).
+    drivetrain: a car/drivetrain.VARIANTS name; torque_mode / inverters: its hub
+    motors' control (vcu/torque_control.MODES; through vcu/inverter's models)."""
+    from kmslap.car.drivetrain import variant
     from kmslap.driving.drive import drive
     from kmslap.driving.follower import PathFollower
     from kmslap.reporting import runs
 
-    car = Car()
+    car = variant(drivetrain)
+    hubs = car.hub_front or car.hub_rear
     track = T.TRACK_NAMES[track_name](width) if width is not None else T.TRACK_NAMES[track_name]()
     p = plan(track, grip, margin, step, car, verbose)
     if not p.stats["success"]:
@@ -58,16 +68,19 @@ def run(track_name: str = "michigan2026", grip: float = 0.85, margin: float = T.
     f = PathFollower.for_plan(p, car=car, laps=3)
     line = p.line
     res = drive(f, car, psi0=float(line.heading[0] - p.beta_ff[0]), X0=float(line.x[0]),
-                Y0=float(line.y[0]), t_max=3 * 4 * p.lap_time, log_period=0.02)
+                Y0=float(line.y[0]), t_max=3 * 4 * p.lap_time, log_period=0.02, torque_mode=torque_mode,
+                inverters="native" if inverters and hubs else None)
     lt = f.lap_times
     finished = len(lt) > 1
     t1, t2 = (lt[0], lt[1]) if finished else (lt[0] if lt else 0.0, float(res.df.t.iloc[-1]))
     d = res.df[(res.df.t >= t1) & (res.df.t <= t2)]
     pen = T.penalties(track, d.X, d.Y, d.psi, car)
     label = label or (f"min-time {grip:.0%} grip, {margin:g} m from the edge"
-                      + (f", {width:g} m wide" if width is not None else ""))
+                      + (f", {width:g} m wide" if width is not None else "")
+                      + (f", {drivetrain} {torque_mode}" + (" +inv" if inverters else "") if hubs else ""))
     runs.save_lap(track_name, label, res.df, t1, t2, finished=finished, penalties=str(pen),
                   penalty_s=pen.seconds, plan_lap_time=p.lap_time, grip=grip, margin=margin, width=width,
+                  drivetrain=drivetrain, torque_mode=torque_mode if hubs else None,
                   max_beta_deg=math.degrees(float(np.abs(d.beta).max())))
     lap = t2 - t1
     print(f"{track.name}\n  plan {p.lap_time:.2f} s | driven flying lap "

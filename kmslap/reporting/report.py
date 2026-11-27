@@ -47,7 +47,7 @@ from kmslap.vcu.uncertainty import ABSOLUTE, RANGES, monte_carlo, sample_plants 
 # One plot style for every figure in the report. Categorical colors in a fixed order
 # (blue, orange, aqua, yellow; checked for colorblind separation), ink and hairline
 # greys for text, truth/reference lines and the grid.
-COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#8e5bd0"]
 INK, INK2, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 # a run keeps its color in every plot (and the GIF); anything else takes the next free one
 RUN_COLORS = {"VCU mu_adaptive": COLORS[0], "VCU": COLORS[0], "no TC": COLORS[1],
@@ -87,8 +87,9 @@ def _slip_color(slip):
     return (min(1.0, 2 * k), min(1.0, 2 * (1 - k)) * 0.8, 0.2)
 
 
-def drag_race_gif(runs: dict, car: Car, path, fps: int = 20, width_px: int = 960):
+def drag_race_gif(runs: dict, car: Car, path, fps: int = 20, width_px: int = 960, title: str | None = None):
     """Animate runs (name -> Result) down the strip, in real time."""
+    title_text = title or f"75 m accel, current car (228HV, FD {car.final_drive:g})"
     names = list(runs)
     finish = {n: r.accel_time for n, r in runs.items()}
     t_end = max(r.df["t"].iloc[-1] for r in runs.values()) + 0.4
@@ -165,7 +166,7 @@ def drag_race_gif(runs: dict, car: Car, path, fps: int = 20, width_px: int = 960
             lines[n][1].set_data(ft[upto], fs[upto])
         for c in cursor:
             c.set_xdata([t, t])
-        title.set_text(f"75 m accel, current car (228HV, FD {car.final_drive:g})   t = {t:4.2f} s")
+        title.set_text(f"{title_text}   t = {t:4.2f} s")
         return []
 
     anim = FuncAnimation(fig, draw, frames=len(frames), interval=1000 / fps)
@@ -408,6 +409,22 @@ def run(out: str = "report", plants: int = 20):
     drag_race_gif(runs, car, out / "drag_race.gif")
     _fig_launch(runs, out / "launch.png")
     _fig_controller(runs["VCU mu_adaptive"], out / "controller_view.png")
+
+    # drivetrain variants: the same 75 m in the double-track model
+    from kmslap.reporting.variants import accel_runs
+    dt_runs = accel_runs()
+    md += ["", "## Drivetrains: 75 m accel (double-track model, wing open)", "",
+           "Hub motor variants (car/drivetrain.py: masses are estimates) with the QP torque "
+           "allocator (vcu/torque_control.py, wheel loads from the IMU: no load cells); the "
+           "current car with the VCU's TC. A WIP comparison: the controllers aren't tuned yet.", "",
+           "| car / torque mode | 75 m time (s) | trap speed (km/h) | peak accel (g) | peak slip (-) |",
+           "|---|--:|--:|--:|--:|"]
+    for n, r in dt_runs.items():
+        s = r.summary()
+        metric(f"drivetrain accel time: {n}", r.accel_time, "s")
+        md.append(f"| {n} | {r.accel_time:.3f} | {s['trap_kmh']:.1f} | {s['peak_accel_g']:.2f} | {s['max_slip']:.2f} |")
+    md += ["", "Animation: `drivetrain_race.gif`."]
+    drag_race_gif(dt_runs, car, out / "drivetrain_race.gif", title="75 m accel, drivetrain variants")
 
     # final drive sweep
     sweep = _fd_sweep(car, motor, sorted({2.4, 2.7, 3.0, 3.5, 4.0, 4.5, 5.0, car.final_drive}))

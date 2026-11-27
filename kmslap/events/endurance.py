@@ -36,12 +36,14 @@ class EnduranceResult:
 def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_time: float = 0.0,
               drs: DrsPolicy | None = None, regen=None, pack: Pack | str = "cosmx600v", path=None,
               speed=None, driver_change: bool = True, soc0: float = 1.0,
-              pack_temp0: float | None = None, log_period: float = 0.02, label: str = "") -> EnduranceResult:
+              pack_temp0: float | None = None, log_period: float = 0.02, label: str = "",
+              torque_mode: str = "load") -> EnduranceResult:
     """Run the event: two stints of laps/2 from a standing start, the pack cooling
     to ambient between them for DRIVER_CHANGE_S.
 
     margin: drive at this fraction of the car's grip envelope (endurance pace).
     speed: target speed along the path instead of the envelope's (m/s per point).
+    torque_mode: a hub motor car's torque controller mode (vcu/torque_control.MODES).
     """
     car = car or Car()
     pack = Pack(PACKS[pack]) if isinstance(pack, str) else pack
@@ -59,7 +61,8 @@ def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_tim
                                 brake_regen_fraction=regen.brake_fraction if regen else 0.0,
                                 pedal_regen_torque=regen.lift_torque if regen else 0.0)
         res = drive(follower, car, pack=pack, drs=drs, regen=regen, soc0=soc, pack_temp0=temp,
-                    psi0=float(path.heading[0]), t_max=stint_laps * 200.0, log_period=log_period)
+                    psi0=float(path.heading[0]), t_max=stint_laps * 200.0, log_period=log_period,
+                    torque_mode=torque_mode)
         d = res.df.copy()
         d["stint"] = n
         d["t_event"] = d.t + t_offset

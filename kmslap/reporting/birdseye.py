@@ -31,6 +31,8 @@ class Strategy:
     drs: dict | None = None              # DrsPolicy kwargs
     regen: dict | None = None            # RegenPolicy kwargs
     car: dict = field(default_factory=dict)   # Car overrides
+    drivetrain: str = "rwd_emrax"        # car/drivetrain.VARIANTS
+    torque_mode: str = "qp"              # hub cars: vcu/torque_control.MODES
 
 
 # from `kmslap strategy --regen` on the measured aero (see the README)
@@ -51,13 +53,14 @@ def drive_lap(s: Strategy, path=None) -> pd.DataFrame:
     from kmslap.car.params import Car
     import dataclasses
 
-    car = dataclasses.replace(Car(), **s.car)
+    from kmslap.car.drivetrain import variant
+    car = variant(s.drivetrain, dataclasses.replace(Car(), **s.car))
     path = path or michigan_2026_endurance()
     speed = speed_profile(path, gg_envelope(car), margin=s.margin)
     res = endurance(car, laps=2, path=path, speed=speed, coast_time=s.coast_time,
                     drs=DrsPolicy(**s.drs) if s.drs is not None else None,
                     regen=RegenPolicy(**s.regen) if s.regen is not None else None,
-                    driver_change=False, log_period=0.05)
+                    driver_change=False, log_period=0.05, torque_mode=s.torque_mode)
     t1, t2 = res.lap_times[0], res.lap_times[0] + res.lap_times[1]
     return lap_frame(res.df, t1, t2)
 
@@ -236,8 +239,21 @@ def speed_map(laps: dict, path, out):
     plt.close(fig)
 
 
-def run(out: str = "birdseye", strategies=None, gif: bool = True) -> dict:
+def drivetrain_strategies(base: Strategy = None) -> list:
+    """One strategy (default: the best preset) on every drivetrain variant."""
+    import dataclasses
+    from kmslap.reporting.variants import LINEUP
+    base = base or PRESETS[0]
+    return [dataclasses.replace(base, name=f"{d} {m}", drivetrain=d, torque_mode="load" if m == "vcu" else m)
+            for d, m in LINEUP]
+
+
+def run(out: str = "birdseye", strategies=None, gif: bool = True, drivetrains: bool = False) -> dict:
+    """drivetrains: the best preset on every drivetrain variant, not the presets."""
     from kmslap.events.track import michigan_2026_endurance
+
+    if drivetrains:
+        strategies = drivetrain_strategies()
 
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)

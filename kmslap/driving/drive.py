@@ -36,7 +36,7 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
           relaxation_length: float = 0.15, relaxation_length_lat: float = 0.3,
           drs=None, regen=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0,
           pack_backend=None, realtime: bool = False, on_tick=None, torque_mode: str = "load",
-          torque_controller=None) -> DriveResult:
+          torque_controller=None, inverters=None) -> DriveResult:
     """Run until the driver is done or t_max.
 
     The driver's pedal maps linearly to a torque request (0..motor peak), as the VCU's
@@ -60,7 +60,11 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     realtime: run no faster than the wall clock (a real cell in the loop).
     torque_mode / torque_controller: a car with hub motors (car/drivetrain.py) commands
     every motor through vcu/torque_control.TorqueController in this mode ("fixed",
-    "load", "yaw"), or through the controller given (e.g. a ModeManager).
+    "load", "yaw", "qp", "qp_lc"), or through the controller given (e.g. a ModeManager).
+    It sees the IMU's (filtered) ax / ay, and the model's wheel loads as load cells.
+    inverters: the hub motors' commands through their inverters (vcu/inverter.py):
+    "native" (DTI current mode, AMK speed mode with torque limits, as the car's hub
+    motors) or an Inverters. None: the torque asked for goes straight to the motors.
     on_tick(t, state, out, inputs): called at the driver rate (state / out by
     twotrack.STATES / OUTPUTS, inputs a dict of the driver's and the command); a true
     return stops the run.
@@ -109,7 +113,13 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     if split is not None:
         from kmslap.vcu.torque_control import VehicleState
         central_cmd = 0.0
-        iaxf, ibusv = S.index("ax_filt"), S.index("bus_v")
+        iaxf, iayf, ibusv = S.index("ax_filt"), S.index("ay_filt"), S.index("bus_v")
+        ifz = [O.index(f"fz_{w}") for w in vehicle.WHEELS]
+    if inverters == "native":
+        from kmslap.vcu.inverter import Inverters
+        inverters = Inverters(car)
+    if inverters is not None:
+        hub_rpm = car.hub_ratio * rpm_per_rads                  # motor rpm per wheel rad/s
     pedal = brake = sw = 0.0
     wing = wing_target = 0.0
     wing_rate = dt / drs.travel_time if drs is not None else 0.0
@@ -148,7 +158,12 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
             if split is not None:
                 central_cmd, hub_cmds = split(VehicleState(
                     pedal, brake, sw / car.steer_ratio, tuple(state[i] for i in iw), state[ivx], state[ir],
-                    state[iaxf], state[ibusv]))
+                    state[iaxf], state[ibusv], ay=state[iayf], fz=tuple(out[i] for i in ifz)))
+                if inverters is not None:
+                    # each wheel's ground speed: the car's, +- the yaw rate times its half track
+                    half = (car.track_front / 2, -car.track_front / 2, car.track_rear / 2, -car.track_rear / 2)
+                    inverters.command(t, hub_cmds, [(state[ivx] - state[ir] * h) / car.tire_radius * hub_rpm
+                                                    for h in half])
         if regen is not None:
             # pedal map with regen at its bottom; the drive part goes through TC, the
             # regen part (and brake blending) straight to the inverter
@@ -171,6 +186,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
         if split is not None and central_cmd <= 0.0:
             t_cmd = max(central_cmd, -regen.max_torque) if regen is not None else 0.0
         wing += max(-wing_rate, min(wing_rate, wing_target - wing))
+        if inverters is not None:
+            hub_cmds = inverters(t, dt, [state[i] * hub_rpm for i in iw])
         plant(t_cmd, sw / car.steer_ratio, brake * car.max_brake_torque, wing, *hub_cmds)
         if t >= next_log - 1e-12:
             next_log += log_period

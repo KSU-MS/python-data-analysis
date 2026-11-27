@@ -144,6 +144,7 @@ kmslap accel 3.0 --plot run.png
 
 # 3D drag race replay of no TC vs the VCU controllers (opens the Rerun viewer)
 kmslap viz
+kmslap viz --drivetrains        # the drivetrain variants (hub motors, AWD / 4WD) instead
 
 # the main notebook: traces, KS5e / OptimumLap validation, launch strategies,
 # the C++ controller in the loop, Monte Carlo, the log -> fit -> retune loop
@@ -295,6 +296,7 @@ steers out the body slip the line is driven with and runs wide.
 ```sh
 kmslap laptime ac18 --grip 0.85 --margin 0.35   # solve (~5-7 min, cached), drive, score, save the lap
 kmslap laptime michigan2026 --width 7           # the 2026 line at another guessed width
+kmslap laptime michigan2026 --drivetrain 4wd_dti --torque-mode qp   # a drivetrain variant's lap
 kmslap race ac18                                # every saved lap racing: race.mp4 (or --out race.gif)
 kmslap race ac18 --rerun                        # the same in 3D in Rerun, with plots on the timeline
 # the solves are heavy: run them on the desktop and bring the laps back
@@ -424,6 +426,38 @@ meant to compile into the VCU.
 tire force and load) with speed / accel / slip / torque / TC / learned mu plots on the same timeline.
 `--save runs.rrd` writes the recording instead; open it later with `rerun runs.rrd`. From code,
 `kmslap.reporting.viz.show_runs({"name": result, ...}, car)`.
+
+## Drivetrains and torque control (WIP)
+
+`car/drivetrain.py` has the car as it is (`rwd_emrax`) and hub motor variants: DTI F-SiC or AMK
+hub motors at the front wheels with the EMRAX at the rear (`awd_emrax_*`), or at all four
+wheels (`4wd_*`, no EMRAX, chain or diff), with mass / weight split / CG estimates.
+`vcu/torque_control.py` commands every motor: `fixed` / `load` splits, `yaw` (a yaw rate PI
+for torque vectoring) and `qp` (after HyTech's drivebrain `qp_torq_allocator`: one small QP
+per control period for driver torque, yaw moment, each wheel's slip, within grip, motor and
+power limits). `qp` estimates wheel loads from the IMU and speed (the sensors the car has
+now); `qp_lc` uses load cells. `vcu/inverter.py` models how the inverters are commanded:
+DTI's native current mode (with its command timeout) and AMK's speed mode with torque
+limits (torque by saturating the speed loop, as the AMK FSE firmware only offers),
+`drive(..., inverters="native")`.
+
+All the multi-car views take them: `kmslap viz --drivetrains` (3D drag race), the report's
+`drivetrain_race.gif`, `kmslap birdseye --drivetrains` (an endurance flying lap) and
+`kmslap laptime --drivetrain ...` laps in `kmslap race`. The lap planner (`mintime_dt`)
+still drives the rear axle only.
+
+`kmslap torque-bench` scores every car x mode on a 75 m accel, the steady skidpad and a
+power-on sine steer (body slip: does it spin), `-p key=value` for a controller setting,
+`--inverters native|slip` through the inverter models. Nov 2026 (DTI cars; AMK alike):
+
+| car / mode | accel (s) | skidpad (g) | sine steer: peak body slip (deg) |
+|---|--:|--:|--:|
+| 4wd_dti load | 3.605 | 1.334 | 88.6 (spins) |
+| 4wd_dti yaw | 3.605 | 1.305 | 3.0 |
+| 4wd_dti qp | 3.487 | 1.384 | 4.6 |
+| awd_emrax_dti load | 3.659 | 1.297 | 37.4 (spins) |
+| awd_emrax_dti yaw | 3.659 | 1.305 | 3.8 |
+| awd_emrax_dti qp | 3.590 | 1.374 | 7.6 |
 
 `kmslap report --out report/` runs the headline sims and writes a drag race GIF
 (rear wheels colored by slip), launch / final drive / robustness / controller-vs-truth /

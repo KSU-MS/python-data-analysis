@@ -30,7 +30,10 @@ def lap_frame(df: pd.DataFrame, t_start: float, t_end: float) -> pd.DataFrame:
     d = df[(df.t >= t_start) & (df.t <= t_end)].copy()
     d["t_lap"] = d.t - t_start
     d["dist"] = np.r_[0, np.cumsum(np.hypot(np.diff(d.X), np.diff(d.Y)))]
-    d["mode"] = np.select([d.motor_torque < -1, d.brake > 0.02, d.pedal > 0.02],
+    # every motor's torque: the EMRAX's and any hub motors'
+    torque = d.motor_torque + sum(d[c] for c in ("hub_torque_fl", "hub_torque_fr", "hub_torque_rl",
+                                                  "hub_torque_rr") if c in d)
+    d["mode"] = np.select([torque < -1, d.brake > 0.02, d.pedal > 0.02],
                           ["regen", "brake", "drive"], "coast")
     return d
 

@@ -185,11 +185,16 @@ def standard_runs(car: Car = None) -> dict:
     }
 
 
-def run(save: str | None = None, fd: float = Car.final_drive):
-    """No TC vs the VCU controllers as a 3D drag race; save: write an .rrd instead."""
+def run(save: str | None = None, fd: float = Car.final_drive, drivetrains: bool = False):
+    """No TC vs the VCU controllers as a 3D drag race; save: write an .rrd instead.
+    drivetrains: the drivetrain variants (reporting/variants.py) instead."""
     car = Car(final_drive=fd).open_aero()
-    runs = standard_runs(car)
+    if drivetrains:
+        from kmslap.reporting.variants import accel_runs
+        runs = accel_runs()
+    else:
+        runs = standard_runs(car)
     for name, res in runs.items():
-        print(f"{name:18s} {res.accel_time:.3f} s")
+        print(f"{name:22s} {res.accel_time:.3f} s")
     show_runs(runs, car, save=save)
 

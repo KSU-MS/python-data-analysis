@@ -54,6 +54,12 @@ class TrackName(str, Enum):
     ac18 = "ac18"
 
 
+# car/drivetrain.VARIANTS and vcu/torque_control.MODES, here so the CLI stays light
+Drivetrain = Enum("Drivetrain", {k: k for k in ("rwd_emrax", "awd_emrax_dti", "awd_emrax_amk", "4wd_dti",
+                                                "4wd_amk")}, type=str)
+TorqueMode = Enum("TorqueMode", {k: k for k in ("fixed", "load", "yaw", "qp", "qp_lc")}, type=str)
+
+
 class Bench(str, Enum):
     single = "single"
     parallel = "parallel"
@@ -126,10 +132,11 @@ def junit_summary(xml: str, artifact_url: Optional[str] = None):
 
 @app.command()
 def viz(save: Annotated[Optional[str], typer.Option(help="write this .rrd instead of opening the viewer")] = None,
-        fd: float = 3.0):
-    """3D drag race of no TC vs the VCU controllers in Rerun."""
+        fd: float = 3.0,
+        drivetrains: Annotated[bool, typer.Option(help="race the drivetrain variants instead")] = False):
+    """3D drag race of no TC vs the VCU controllers (or the drivetrain variants) in Rerun."""
     from kmslap.reporting.viz import run
-    run(save, fd)
+    run(save, fd, drivetrains)
 
 
 @app.command()
@@ -155,10 +162,13 @@ def laptime(track: Annotated[TrackName, typer.Argument(help="michigan2026: the t
             step: Annotated[float, typer.Option(help="m between the solver's nodes")] = 2.0,
             label: Annotated[Optional[str], typer.Option(help="name of the saved lap")] = None,
             width: Annotated[Optional[float], typer.Option(help="track width, m (michigan2026: a line only)")] = None,
+            drivetrain: Annotated[Drivetrain, typer.Option(help="car/drivetrain.py variant")] = "rwd_emrax",
+            torque_mode: Annotated[TorqueMode, typer.Option(help="hub cars: the torque controller's mode")] = "qp",
+            inverters: Annotated[bool, typer.Option(help="hub cars: through the inverters' command models")] = False,
             verbose: bool = False):
     """Minimum-time racing line (double track, ~5-7 min, cached), driven, scored, lap saved."""
     from kmslap.events.laptime import run
-    run(track.value, grip, margin, step, label, verbose, width)
+    run(track.value, grip, margin, step, label, verbose, width, drivetrain.value, torque_mode.value, inverters)
 
 
 @app.command()
@@ -224,11 +234,24 @@ def hil(track: Annotated[TrackName, typer.Argument()] = TrackName.ac18,
     r.serve(autostart=autostart, once=once)
 
 
+@app.command("torque-bench")
+def torque_bench(car: Annotated[list[Drivetrain], typer.Option("--car", "-c", help="variants (repeatable)")] = [],
+                 mode: Annotated[list[TorqueMode], typer.Option("--mode", "-m", help="modes (repeatable)")] = [],
+                 param: Annotated[list[str], typer.Option("--param", "-p", help="controller key=value (repeatable)")] = [],
+                 inverters: Annotated[Optional[str], typer.Option(help="native, or slip (AMK speed loop as TC)")] = None):
+    """Benchmark the multi-motor torque controllers: accel, skidpad, a power-on sine steer."""
+    import ast
+    from kmslap.vcu import torque_bench as tb
+    params = {k: ast.literal_eval(v) for k, v in (p.split("=", 1) for p in param)}
+    tb.run([c.value for c in car] or tb.CARS, [m.value for m in mode] or tb.MODES, params, inverters=inverters)
+
+
 @app.command()
-def birdseye(out: str = "birdseye", gif: Annotated[bool, typer.Option(help="also the lap GIF (~1 min)")] = True):
-    """Endurance strategy presets racing a flying lap on Michigan 2026: GIF + speed map."""
+def birdseye(out: str = "birdseye", gif: Annotated[bool, typer.Option(help="also the lap GIF (~1 min)")] = True,
+             drivetrains: Annotated[bool, typer.Option(help="the best preset on each drivetrain variant")] = False):
+    """Endurance strategy presets (or drivetrain variants) racing a flying lap on Michigan 2026: GIF + speed map."""
     from kmslap.reporting.birdseye import run
-    run(out, gif=gif)
+    run(out, gif=gif, drivetrains=drivetrains)
 
 
 @app.command()
