@@ -315,28 +315,60 @@ def track_scene(track, car=None, plan_line=None):
     return up
 
 
+GOLD, BLACK, SILVER, WHITE = (0.99, 0.73, 0.19), (0.09, 0.09, 0.1), (0.75, 0.76, 0.78), (0.95, 0.95, 0.95)
+
+
 def car_scene(car, steer):
-    """Foxglove SceneUpdate of the car in its own frame, front wheels at `steer` (rad)."""
+    """Foxglove SceneUpdate of the car in its own frame (x forward, z up, origin under
+    the CG), front wheels at `steer` (rad): an FSAE car from primitives (tub and nose,
+    sidepods, wings, roll hoop, driver, wheels with rims), team colours."""
     from foxglove_schemas_protobuf.SceneUpdate_pb2 import SceneUpdate
 
     lf, lr = car.cg_to_front, car.wheelbase - car.cg_to_front
     r = car.tire_radius
     up = SceneUpdate()
     e = up.entities.add(id="car", frame_id="car")
-    body = e.cubes.add()
-    body.pose.position.x, body.pose.position.z = (lf - lr) / 2, r + 0.15
-    body.pose.orientation.w = 1.0
-    body.size.x, body.size.y, body.size.z = car.wheelbase + 0.9, 0.85, 0.3
-    body.color.r, body.color.g, body.color.b, body.color.a = 0.25, 0.45, 0.85, 1.0
-    for x, y, front in ((lf, car.track_front / 2, 1), (lf, -car.track_front / 2, 1),
-                        (-lr, car.track_rear / 2, 0), (-lr, -car.track_rear / 2, 0)):
-        w = e.cylinders.add()
-        w.pose.position.x, w.pose.position.y, w.pose.position.z = x, y, r
-        # cylinder axis is z: turn it onto y, then steer about z
-        q = _quat_mul(_quat("z", steer if front else 0.0), _quat("x", math.pi / 2))
-        w.pose.orientation.x, w.pose.orientation.y, w.pose.orientation.z, w.pose.orientation.w = (float(v) for v in q)
-        w.size.x, w.size.y, w.size.z = 2 * r, 2 * r, 0.2
-        w.color.r, w.color.g, w.color.b, w.color.a = 0.1, 0.1, 0.1, 1.0
+
+    def paint(p, rgb, a=1.0):
+        p.color.r, p.color.g, p.color.b, p.color.a = *rgb, a
+
+    def cube(x, y, z, sx, sy, sz, rgb):
+        c = e.cubes.add()
+        c.pose.position.x, c.pose.position.y, c.pose.position.z = x, y, z
+        c.pose.orientation.w = 1.0
+        c.size.x, c.size.y, c.size.z = sx, sy, sz
+        paint(c, rgb)
+
+    def cylinder(x, y, z, d1, d2, length, q, rgb, top=1.0):
+        c = e.cylinders.add(bottom_scale=1.0, top_scale=top)
+        c.pose.position.x, c.pose.position.y, c.pose.position.z = x, y, z
+        c.pose.orientation.x, c.pose.orientation.y, c.pose.orientation.z, c.pose.orientation.w = (float(v) for v in q)
+        c.size.x, c.size.y, c.size.z = d1, d2, length
+        paint(c, rgb)
+
+    front, rear = lf + 0.1, -lr - 0.05
+    cube((front + rear) / 2 - 0.05, 0, 0.33, front - rear - 0.1, 0.62, 0.42, GOLD)            # tub
+    cylinder(front + 0.25, 0, 0.3, 0.4, 0.55, 0.55, _quat("y", math.pi / 2), GOLD, top=0.35)   # nose cone
+    for side in (1, -1):
+        cube(-0.15, side * 0.42, 0.26, 0.9, 0.26, 0.32, BLACK)                                 # sidepods
+        cube(front + 0.55, side * 0.7, 0.18, 0.45, 0.02, 0.22, BLACK)                          # front endplates
+        cube(rear - 0.35, side * 0.5, 1.0, 0.55, 0.02, 0.4, BLACK)                             # rear endplates
+        cube(rear - 0.15, side * 0.15, 0.75, 0.04, 0.03, 0.55, BLACK)                          # wing mounts
+    cube(front + 0.55, 0, 0.1, 0.4, 1.4, 0.04, BLACK)                                          # front wing
+    cube(rear - 0.35, 0, 1.05, 0.45, 1.0, 0.04, BLACK)                                         # rear wing
+    cube(rear - 0.42, 0, 1.17, 0.28, 1.0, 0.03, BLACK)                                         # its flap
+    cube(-0.3, 0, 0.8, 0.06, 0.5, 0.5, BLACK)                                                  # roll hoop
+    sp = e.spheres.add()                                                                       # driver
+    sp.pose.position.x, sp.pose.position.y, sp.pose.position.z = -0.05, 0.0, 0.78
+    sp.pose.orientation.w = 1.0
+    sp.size.x = sp.size.y = sp.size.z = 0.27
+    paint(sp, WHITE)
+    for x, y, steered in ((lf, car.track_front / 2, True), (lf, -car.track_front / 2, True),
+                          (-lr, car.track_rear / 2, False), (-lr, -car.track_rear / 2, False)):
+        # a cylinder's axis is z: turn it onto y, then steer about z
+        q = _quat_mul(_quat("z", steer if steered else 0.0), _quat("x", math.pi / 2))
+        cylinder(x, y, r, 2 * r, 2 * r, 0.2, q, BLACK)                                         # tire
+        cylinder(x, y, r, 1.25 * r, 1.25 * r, 0.21, q, SILVER)                                 # rim
     return up
 
 
@@ -396,6 +428,7 @@ def layout() -> dict:
                 "showLegend": True, "legendDisplay": "floating", "foxglovePanelTitle": title}
     cfg = {
         "3D!sim": {"followTf": "car", "followMode": "follow-position",
+                   "scene": {"transforms": {"visible": False, "showLabel": False}},
                    "topics": {"/sim/track": {"visible": True}, "/sim/car": {"visible": True}},
                    "cameraState": {"distance": 25, "perspective": True, "phi": 55, "thetaOffset": 90, "targetOffset": [0, 0, 0]},
                    "foxglovePanelTitle": "car (sim)"},

@@ -133,7 +133,9 @@ def hil_layout() -> str:
 
     car3d = fl.ThreeDeePanel(title="car (isometric)", config=fl.ThreeDeeConfig(
         follow_tf="car", follow_mode="follow-position", fixed_frame="map",
-        camera_state=fl.ThreeDeeCameraState(perspective=False, distance=45, phi=55, theta_offset=45,
+        # the frames' axes and the map -> car line would cross the whole track
+        scene=fl.BaseRendererSceneSettings(transforms=fl.BaseRendererTransforms(visible=False, show_label=False)),
+        camera_state=fl.ThreeDeeCameraState(perspective=False, distance=14, phi=55, theta_offset=45,
                                             target_offset=(0, 0, 0)),
         topics={"/sim/track": fl.BaseRendererSceneUpdateTopicSettings(visible=True),
                 "/sim/car": fl.BaseRendererSceneUpdateTopicSettings(visible=True)}))
