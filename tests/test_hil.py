@@ -69,7 +69,18 @@ def test_hil_layout_has_the_controls():
     from kmslap.hil.live import hil_layout
     s = hil_layout()
     layout = json.loads(s)
-    assert layout["content"]["type"] == "split"
-    for service in ("start", "stop", "reset", "abort"):
-        assert f'"serviceName":"{service}"' in s
-    assert '"followTf":"car"' in s and "/hil/pack.cell_current" in s
+    # the app's file format: panels by id, a split tree of their ids
+    assert {"configById", "layout"} <= set(layout)
+    kinds = {k.split("!")[0] for k in layout["configById"]}
+    assert {"3D", "map", "Gauge", "Indicator", "CallService", "Plot", "Tab"} <= kinds
+    calls = [c["serviceName"] for k, c in layout["configById"].items() if k.startswith("CallService")]
+    assert sorted(calls) == ["abort", "reset", "start", "stop"]
+
+    def ids(tree):
+        return [tree] if isinstance(tree, str) else ids(tree["first"]) + ids(tree["second"])
+    shown = set(ids(layout["layout"]))
+    for c in layout["configById"].values():
+        for tab in c.get("tabs", []):
+            shown |= set(ids(tab["layout"]))
+    assert shown == set(layout["configById"])                      # every panel placed, none dangling
+    assert "/hil/pack.cell_current" in s

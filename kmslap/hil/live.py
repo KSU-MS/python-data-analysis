@@ -78,8 +78,45 @@ class Live:
         self.server.stop()
 
 
+# the SDK's panel types -> the ids the Foxglove app's layout files use
+_CLASSIC_PANEL = {"ThreeDee": "3D", "Map": "map", "ServiceCall": "CallService"}
+
+
+def classic_layout(sdk_layout: dict) -> dict:
+    """A layout from foxglove.layouts (its `version: 1` form) in the form the Foxglove
+    app imports from a file (configById + a binary split tree, as the team's own)."""
+    config = {}
+    count = iter(range(1, 10_000))
+
+    def pid(kind):
+        return f"{kind}!{next(count):x}"
+
+    def node(n):
+        if n["type"] == "panel":
+            key = pid(_CLASSIC_PANEL.get(n["panelType"], n["panelType"]))
+            config[key] = {**n.get("config", {}), **({"foxglovePanelTitle": n["title"]} if n.get("title") else {})}
+            return key
+        if n["type"] == "tabs":
+            key = pid("Tab")
+            config[key] = {"activeTabIdx": n.get("selectedTabIndex") or 0,
+                           "tabs": [{"title": t["title"], "layout": node(t["content"])} for t in n["tabs"]]}
+            return key
+        items = n["items"]
+        if len(items) == 1:
+            return node(items[0]["content"])
+        rest = {"type": "split", "direction": n["direction"], "items": items[1:]}
+        total = sum(i.get("proportion", 1) for i in items)
+        return {"first": node(items[0]["content"]), "second": node(rest), "direction": n["direction"],
+                "splitPercentage": 100 * items[0].get("proportion", 1) / total}
+
+    tree = node(sdk_layout["content"])
+    return {"configById": config, "globalVariables": {}, "userNodes": {}, "playbackConfig": {"speed": 1},
+            "layout": tree}
+
+
 def hil_layout() -> str:
-    """The layout (JSON) to watch a run with."""
+    """The layout to watch a run with: JSON to import in Foxglove (built with
+    foxglove.layouts, written in the app's file format)."""
     def plot(title, *paths, y=None):
         return fl.PlotPanel(title=title, config=fl.PlotConfig(
             paths=[fl.PlotSeries(value=p, label=label) for p, label in paths], show_legend=True,
@@ -150,8 +187,9 @@ def hil_layout() -> str:
                                                     ("/hil/pack.lateness_ms", "sim behind real time"))),
             fl.SplitItem(proportion=1, content=plot("rig counters", ("/hil/pack.rig_charge_ah", "Ah"),
                                                     ("/hil/pack.rig_energy_wh", "Wh")))]))])
-    return fl.Layout(content=fl.SplitContainer(direction="row", items=[
+    layout = fl.Layout(content=fl.SplitContainer(direction="row", items=[
         fl.SplitItem(proportion=1.4, content=fl.SplitContainer(direction="column", items=[
             fl.SplitItem(proportion=2.2, content=car3d), fl.SplitItem(proportion=1, content=where)])),
         fl.SplitItem(proportion=1, content=gauges),
         fl.SplitItem(proportion=1.2, content=tabs)])).to_json()
+    return json.dumps(classic_layout(json.loads(layout)), indent=1)
