@@ -49,12 +49,14 @@ from kmslap import dirs
 WHEELS = ("fl", "fr", "rl", "rr")
 STATES = (["X", "Y", "psi", "vx", "vy", "r"] + [f"omega_{w}" for w in WHEELS]
           + [f"kappa_{w}" for w in WHEELS] + [f"alpha_{w}" for w in WHEELS]
-          + ["ax_filt", "ay_filt", "t_lagged", "bus_v", "soc", "pack_temp"])
-INPUTS = ["torque_cmd", "steer", "brake_torque", "drs"]
+          + ["ax_filt", "ay_filt", "t_lagged", "bus_v", "soc", "pack_temp"]
+          + [f"hub_t_{w}" for w in WHEELS])                  # hub motors' lagged torque
+INPUTS = ["torque_cmd", "steer", "brake_torque", "drs"] + [f"hub_cmd_{w}" for w in WHEELS]
 OUTPUTS = (["ax", "ay"] + [f"fx_{w}" for w in WHEELS] + [f"fy_{w}" for w in WHEELS]
            + [f"fz_{w}" for w in WHEELS]
            + ["motor_torque", "bus_i", "motor_rpm", "drag", "diff_torque", "pack_heat",
-              "pack_v_oc", "pack_resistance"])
+              "pack_v_oc", "pack_resistance"]
+           + [f"hub_torque_{w}" for w in WHEELS] + ["hub_power", "drive_power"])
 CAR_PARAMS = ["mass", "cg_height", "wheelbase", "front_weight", "tire_radius", "final_drive",
               "driveline_eff", "motor_eff", "cda", "cla", "aero_front", "rho", "crr",
               "wheel_inertia", "rear_driveline_inertia", "pitch_tau", "roll_tau", "torque_tau",
@@ -67,7 +69,9 @@ PARAMS = CAR_PARAMS + ["relaxation_length", "relaxation_length_lat", "tire_scale
                        "pack_max_current", "pack_thermal_mass", "pack_h_a", "pack_ambient_c",
                        "pack_resistance_temp_coeff", "pack_v_cell_min", "pack_v_cell_max",
                        "pack_max_charge_current", "regen_enabled", "regen_max_torque",
-                       "pack_ext", "pack_ext_v_oc", "pack_ext_r", "dt"]
+                       "pack_ext", "pack_ext_v_oc", "pack_ext_r",
+                       "central_drive"] + [f"hub_{w}" for w in WHEELS] + [
+                       "hub_ratio", "hub_gear_eff", "hub_rotor_inertia", "dt"]
 BRAKE_EPS = 2.0   # rad/s, brake torque fades to 0 on a stopped wheel (numerical)
 
 
@@ -88,8 +92,16 @@ def params(car: Car, motor: MotorMap, pack: Pack, tire, *, relaxation_length: fl
              pack_v_cell_max=pack.v_cell_max, pack_max_charge_current=pack.max_charge_current,
              regen_enabled=0.0 if regen is None else 1.0,
              regen_max_torque=0.0 if regen is None else regen.max_torque,
-             pack_ext=0.0, pack_ext_v_oc=0.0, pack_ext_r=0.0, dt=dt)
+             pack_ext=0.0, pack_ext_v_oc=0.0, pack_ext_r=0.0,
+             central_drive=float(car.central_drive), hub_fl=float(car.hub_front), hub_fr=float(car.hub_front),
+             hub_rl=float(car.hub_rear), hub_rr=float(car.hub_rear), hub_ratio=car.hub_ratio,
+             hub_gear_eff=car.hub_gear_eff, hub_rotor_inertia=_hub(car.hub_motor).rotor_inertia, dt=dt)
     return np.array([p[k] for k in PARAMS], dtype=float)
+
+
+def _hub(kind: str):
+    from kmslap.car.drivetrain import HubMotor
+    return HubMotor(kind)
 
 
 def initial_state(car: Car, pack: Pack, *, vx: float = 0.0, soc: float = 1.0,
@@ -106,14 +118,16 @@ def initial_state(car: Car, pack: Pack, *, vx: float = 0.0, soc: float = 1.0,
     return np.array([s[k] for k in STATES])
 
 
-def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
-    """step(state, inputs, params) -> (next state, outputs)."""
+def step_function(motor: MotorMap, tire, pack: Pack, hub_kind: str = "dti") -> ca.Function:
+    """step(state, inputs, params) -> (next state, outputs). hub_kind: the hub motors'
+    tables (car.hub_motor), used where params put hub motors."""
     s = ca.SX.sym("state", len(STATES))
     u = ca.SX.sym("inputs", len(INPUTS))
     pv = ca.SX.sym("params", len(PARAMS))
     x = {k: s[i] for i, k in enumerate(STATES)}
     p = {k: pv[i] for i, k in enumerate(PARAMS)}
     t_cmd, steer, brake, drs = u[0], u[1], u[2], _clamp(u[3], 0, 1)
+    hub_cmd = {w: u[4 + i] for i, w in enumerate(WHEELS)}
     dt, r_t, gr, m = p["dt"], p["tire_radius"], p["final_drive"], p["mass"]
     vx, vy, yaw_rate = x["vx"], x["vy"], x["r"]
 
@@ -193,6 +207,54 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
     torque = ca.if_else(regen_on, t_gen, torque)
     current = ca.if_else(regen_on, i_gen, current)
     bus_v = ca.if_else(regen_on, v_oc - i_gen * r_pack, bus_v)
+    # --- hub motors (car.hub_front / hub_rear): each through its gearbox to its wheel.
+    # Their power and the rear motor's share the pack and the 80 kW; motoring torques
+    # scale down together when the total is over (or the pack can't give it). With no
+    # hub motors every value below is the rear-only one, bit for bit.
+    hub = _hub(hub_kind)
+    rpms, torques, t_max_tbl, eff_tbl = hub.tables()
+    hub_tmax = ca.interpolant("hub_tmax", "linear", [rpms], t_max_tbl)
+    hub_eff = ca.interpolant("hub_eff", "linear", [rpms, torques], eff_tbl.ravel(order="F"))
+    any_hub = sum(p[f"hub_{w}"] for w in WHEELS) > 0
+    torque = torque * p["central_drive"]                      # no EMRAX: nothing at the diff
+    hub_t, hub_p, hub_wheel = {}, {}, {}
+    for w in WHEELS:
+        lagged = ca.if_else(p["torque_tau"] > 0, x[f"hub_t_{w}"] + dt * (hub_cmd[w] - x[f"hub_t_{w}"])
+                            / ca.fmax(p["torque_tau"], 1e-12), hub_cmd[w])
+        om = x[f"omega_{w}"] * p["hub_ratio"]                # motor rad/s
+        hrpm = _clamp(om * model.RPM_PER_RADS, 0, rpms[-1])
+        lim = hub_tmax(hrpm)
+        hub_t[w] = _clamp(lagged, -lim, lim) * p[f"hub_{w}"]
+        eta = hub_eff(ca.vertcat(hrpm, _clamp(ca.fabs(hub_t[w]), torques[0], torques[-1])))
+        hub_p[w] = ca.if_else(hub_t[w] >= 0, hub_t[w] * om / eta, hub_t[w] * om * eta)
+    p_hub = sum(hub_p.values())
+    # the rear motor's electrical power as the pack sees it
+    p_rear = ca.if_else(regen_on, p_dc * p["central_drive"], ca.fmax(torque, 0) * omega_m / p["motor_eff"])
+    p_tot = p_rear + p_hub
+    p_drive = ca.fmax(p_rear, 0) + sum(ca.fmax(hub_p[w], 0) for w in WHEELS)
+    # pack: motoring within the 80 kW and the pack's current; regen within its charge limit
+    v_dis, i_dis, p_del = model._pack_solve(pp, ca.fmax(p_tot, 0))
+    scale_m = ca.if_else(p_drive > 1e-6, ca.fmin(1, ca.fmin(p["power_limit"], p_del + ca.fmax(-ca.fmin(p_tot, 0), 0))
+                                                         / ca.fmax(p_drive, 1e-6)), 1)
+    i_chg = (v_oc - ca.sqrt(ca.fmax(v_oc * v_oc - 4 * r_pack * ca.fmin(p_tot, 0), 0))) / (2 * r_pack)
+    i_floor_h = ca.fmax(-p["pack_max_charge_current"],
+                        ca.fmin(0, (v_oc - p["pack_series"] * p["pack_v_cell_max"]) / r_pack))
+    scale_r = ca.if_else(i_chg < i_floor_h, i_floor_h / ca.fmin(i_chg, -1e-9), 1)
+    for w in WHEELS:
+        hub_t[w] = ca.if_else(hub_t[w] >= 0, hub_t[w] * scale_m, hub_t[w] * scale_r)
+        hub_wheel[w] = ca.if_else(hub_t[w] >= 0, hub_t[w] * p["hub_ratio"] * p["hub_gear_eff"],
+                                  hub_t[w] * p["hub_ratio"] / p["hub_gear_eff"])
+    torque_h = ca.if_else(torque >= 0, torque * scale_m, torque * scale_r)
+    p_tot_s = sum(ca.if_else(hub_t[w] >= 0, hub_p[w] * scale_m, hub_p[w] * scale_r) for w in WHEELS) \
+        + ca.if_else(torque >= 0, p_rear * scale_m, p_rear * scale_r)
+    i_h = ca.if_else(p_tot_s >= 0, (v_oc - ca.sqrt(ca.fmax(v_oc * v_oc - 4 * r_pack * p_tot_s, 0))) / (2 * r_pack),
+                     ca.fmax((v_oc - ca.sqrt(ca.fmax(v_oc * v_oc - 4 * r_pack * p_tot_s, 0))) / (2 * r_pack), i_floor_h))
+    torque = ca.if_else(any_hub, torque_h, torque)
+    current = ca.if_else(any_hub, i_h, current)
+    bus_v = ca.if_else(any_hub, v_oc - i_h * r_pack, bus_v)
+    hub_power = ca.if_else(any_hub, p_tot_s - ca.if_else(torque >= 0, p_rear * scale_m, p_rear * scale_r), 0)
+    drive_power = ca.if_else(any_hub, p_tot_s, current * bus_v)
+
     # at the diff: driving loses the chain's efficiency on the way out, regen on the way in
     t_c = ca.if_else(torque >= 0, torque * gr * p["driveline_eff"], torque * gr / p["driveline_eff"])
 
@@ -201,8 +263,10 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
     brake_f = 0.5 * brake * p["brake_bias_front"]
     brake_r = 0.5 * brake * (1 - p["brake_bias_front"])
     domega = {}
+    j_hub = p["hub_rotor_inertia"] * p["hub_ratio"] * p["hub_ratio"]        # rotor, at the wheel
     for w in ("fl", "fr"):
-        domega[w] = (-fx[w] * r_t - brake_f * ca.tanh(x[f"omega_{w}"] / BRAKE_EPS)) / jw
+        domega[w] = (hub_wheel[w] - fx[w] * r_t - brake_f * ca.tanh(x[f"omega_{w}"] / BRAKE_EPS)) \
+            / (jw + p[f"hub_{w}"] * j_hub)
     # Rear: carrier inertia couples the wheels, the LSD clutch resists their difference
     lock = p["diff_preload"] + ca.if_else(t_c >= 0, p["diff_lock_drive"], p["diff_lock_coast"]) * ca.fabs(t_c)
     t_diff = 0.5 * lock * ca.tanh((x["omega_rl"] - x["omega_rr"]) / p["diff_slip_eps"])
@@ -213,6 +277,12 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
     det = a_ * a_ - b_ * b_
     domega["rl"] = (a_ * tau_l - b_ * tau_r) / det
     domega["rr"] = (a_ * tau_r - b_ * tau_l) / det
+    # no EMRAX and diff: each rear wheel on its own (its hub motor, if it has one)
+    for w in ("rl", "rr"):
+        free = (hub_wheel[w] - fx[w] * r_t - brake_r * ca.tanh(x[f"omega_{w}"] / BRAKE_EPS)) \
+            / (jw + p[f"hub_{w}"] * j_hub)
+        domega[w] = ca.if_else(p["central_drive"] > 0, domega[w], free)
+    t_diff = t_diff * p["central_drive"]
 
     # --- chassis
     fz_tot = m * G + down
@@ -248,13 +318,16 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
         ax_filt=lag(x["ax_filt"], ax, p["pitch_tau"]),
         ay_filt=lag(x["ay_filt"], ay, p["roll_tau"]),
         t_lagged=t_lagged, bus_v=bus_v,
+        **{f"hub_t_{w}": ca.if_else(p["torque_tau"] > 0, x[f"hub_t_{w}"] + dt * (hub_cmd[w] - x[f"hub_t_{w}"])
+                                    / ca.fmax(p["torque_tau"], 1e-12), hub_cmd[w]) * p[f"hub_{w}"] for w in WHEELS},
         soc=x["soc"] - ca.if_else(current < 0, current * p["regen_coulombic_eff"], current)
         * dt / (p["pack_capacity_ah"] * 3600),
         pack_temp=x["pack_temp"] + dt * (heat - p["pack_h_a"] * (x["pack_temp"] - p["pack_ambient_c"]))
         / p["pack_thermal_mass"],
     )
     out = ([ax, ay] + [fx[w] for w in WHEELS] + [fy[w] for w in WHEELS] + [fz[w] for w in WHEELS]
-           + [torque, current, omega_m * model.RPM_PER_RADS, drag, 2 * t_diff, heat, v_oc, r_pack])
+           + [torque, current, omega_m * model.RPM_PER_RADS, drag, 2 * t_diff, heat, v_oc, r_pack]
+           + [hub_t[w] for w in WHEELS] + [hub_power, drive_power])
     return ca.Function("car_step", [s, u, pv],
                        [ca.vertcat(*[nxt[k] for k in STATES]), ca.vertcat(*out)],
                        ["state", "inputs", "params"], ["next", "out"])
@@ -264,13 +337,15 @@ def _clamp(v, lo, hi):
     return ca.fmin(ca.fmax(v, lo), hi)
 
 
-def car_step(motor: MotorMap, tire, pack: Pack, param_vector, state0) -> model.CompiledStep:
+def car_step(motor: MotorMap, tire, pack: Pack, param_vector, state0, hub_kind: str = "dti") -> model.CompiledStep:
     """step_function, compiled, for drive()'s loop."""
+    from kmslap.car.drivetrain import DATASHEETS
     key = model._motor_key(motor) + (tire.table_key_2d(),
                                      model._hash_arrays(pack.ocv_soc, pack.ocv_cell),
-                                     model._hash_arrays(*motor_efficiency_map(motor.name)))
+                                     model._hash_arrays(*motor_efficiency_map(motor.name)), hub_kind)
     here = Path(__file__)
-    return model.CompiledStep("car_step", lambda: step_function(motor, tire, pack), key,
+    return model.CompiledStep("car_step", lambda: step_function(motor, tire, pack, hub_kind), key,
                               [here, here.with_name("accel1d.py"), dirs.PACKAGE / "car" / "tire.py",
-                               dirs.PACKAGE / "car" / "powertrain.py"],
+                               dirs.PACKAGE / "car" / "powertrain.py", dirs.PACKAGE / "car" / "drivetrain.py",
+                               *[dirs.DATASHEETS / f for f in DATASHEETS.values()]],
                               len(INPUTS), len(OUTPUTS), param_vector, state0)

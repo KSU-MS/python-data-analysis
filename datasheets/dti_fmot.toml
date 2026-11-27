@@ -1,0 +1,87 @@
+# DTI F-MOT (Fischer Elektromotoren for Drive Train Innovation), the motor of DTI's
+# F-SiC Formula Student kit: "DTI F-SiC Documents/F-MOT_motor_Specification_V1.5.pdf"
+# (2026 F-MOT; the 2025 F-MOT-A differs in peak current, 66 A, and nominal torque) and
+# "F-MOT Power Losses.xlsx". Read by kmslap/car/drivetrain.py.
+
+model = "F-MOT"
+peak_torque_nm = 31.6
+peak_current_arms = 85.0
+max_rpm = 20000
+peak_power_kw = 35.0                 # measured at 10500 rpm
+nominal_torque_nm = 11.1
+nominal_power_kw = 15.4
+nominal_rpm = 13250
+torque_constant_nm_per_arms = 0.492
+bemf_vrms_per_rpm = 0.031
+max_bus_v = 600
+pole_pairs = 4
+phase_resistance_ohm = 0.126         # 20 C
+mass_kg = 3.7
+rotor_inertia_kgm2 = 6.0e-4          # ESTIMATE: not in the documents (a ~1.2 kg rotor, 30 mm radius)
+
+# losses (W): iron vs motor speed (rpm), copper vs phase current (A rms)
+iron_w_vs_rpm = [
+  [0, 0],
+  [500, 5],
+  [1000, 11],
+  [1500, 17],
+  [2000, 26],
+  [2500, 37],
+  [3000, 50],
+  [3500, 63],
+  [4000, 75],
+  [4500, 88],
+  [5000, 101],
+  [5500, 116],
+  [6000, 131],
+  [6500, 146],
+  [7000, 162],
+  [7500, 179],
+  [8000, 196],
+  [8500, 214],
+  [9000, 233],
+  [9500, 252],
+  [10000, 272],
+  [10500, 292],
+  [11000, 313],
+  [11500, 338],
+  [12000, 356],
+  [12500, 364],
+  [13000, 370],
+  [13500, 374],
+  [14000, 376],
+  [14500, 376],
+  [15000, 377],
+  [15500, 379],
+  [16000, 380],
+  [16500, 384],
+  [17000, 387],
+  [17500, 390],
+  [18000, 392],
+  [18500, 394],
+  [19000, 397],
+  [19500, 399],
+  [20000, 402],
+]
+copper_w_vs_arms = [
+  [0, 0],
+  [5, 9],
+  [10, 37],
+  [15, 85],
+  [20, 151],
+  [25, 236],
+  [30, 340],
+  [35, 463],
+  [40, 604],
+  [45, 765],
+  [50, 945],
+  [55, 1143],
+  [60, 1360],
+  [65, 1597],
+]
+
+[inverter]                           # F-SiC: two inverters per 1.1 kg module
+mass_kg_per_motor = 0.55
+efficiency = 0.9815                  # "typical", 550 V, 20 kHz
+continuous_apk = 56
+peak_apk = 113

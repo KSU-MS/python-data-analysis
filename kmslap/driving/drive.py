@@ -72,7 +72,7 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
         vehicle.params(car, motor, pack, tire, relaxation_length=relaxation_length,
                        relaxation_length_lat=relaxation_length_lat, dt=dt, regen=regen),
         vehicle.initial_state(car, pack, vx=vx0, soc=soc0, pack_temp=pack_temp0, X=X0, Y=Y0,
-                              psi=psi0))
+                              psi=psi0), hub_kind=car.hub_motor)
 
     S, O, P = vehicle.STATES, vehicle.OUTPUTS, vehicle.PARAMS
     if pack_backend is not None:
@@ -95,6 +95,14 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     gr = car.final_drive
 
     state, out = plant.state, [0.0] * len(O)
+    hub_cmds = (0.0, 0.0, 0.0, 0.0)
+    # hub motors: the torque split gives every motor its command, at the driver rate
+    split = None
+    if car.hub_front or car.hub_rear:
+        from kmslap.driving.torque_split import TorqueSplit
+        split = TorqueSplit(car, motor, regen, period=driver_period, tc=controller is None)
+        central_cmd = 0.0
+        iaxf, ibusv = S.index("ax_filt"), S.index("bus_v")
     pedal = brake = sw = 0.0
     wing = wing_target = 0.0
     wing_rate = dt / drs.travel_time if drs is not None else 0.0
@@ -130,6 +138,9 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
                 break
             if drs is not None:
                 wing_target = drs(obs, pedal, brake, sw)
+            if split is not None:
+                central_cmd, hub_cmds = split(pedal, brake, [state[i] for i in iw], state[ivx], state[iaxf],
+                                              state[ibusv], state[ir])
         if regen is not None:
             # pedal map with regen at its bottom; the drive part goes through TC, the
             # regen part (and brake blending) straight to the inverter
@@ -137,17 +148,22 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
             t_req = max(t_map, 0.0)
         else:
             t_req = pedal * motor.peak_torque
-        if controller is not None:
+        if split is not None:
+            # the split's share for the EMRAX (if there is one); TC on its drive torque
+            t_req = max(central_cmd, 0.0)
+        if controller is not None and (split is None or t_req > 0):
             omegas = [state[i] for i in iw]
             motor_rpm = 0.5 * (omegas[2] + omegas[3]) * gr * rpm_per_rads
             t_cmd = controller.step(t, dt, omegas, motor_rpm, state[ivx], out[iax],
                                     out[itq], t_req)
         else:
             t_cmd = t_req
-        if regen is not None and t_map <= 0.0:
+        if regen is not None and t_map <= 0.0 and split is None:
             t_cmd = max(t_map - regen.blend_torque(brake, car), -regen.max_torque)
+        if split is not None and central_cmd <= 0.0:
+            t_cmd = max(central_cmd, -regen.max_torque) if regen is not None else 0.0
         wing += max(-wing_rate, min(wing_rate, wing_target - wing))
-        plant(t_cmd, sw / car.steer_ratio, brake * car.max_brake_torque, wing)
+        plant(t_cmd, sw / car.steer_ratio, brake * car.max_brake_torque, wing, *hub_cmds)
         if t >= next_log - 1e-12:
             next_log += log_period
             rows.append([t, pedal, brake, sw, wing, t_req, t_cmd, *state, *plant.out])

@@ -30,9 +30,11 @@ def _crossing_time(df, x):
     return float(np.interp(x, df.X, df.t))
 
 
-def test_compiled_step_matches_casadi(motor, pack):
-    car, tire = Car(), default_tire()
-    f = vehicle.step_function(motor, tire, pack)
+@pytest.mark.parametrize("drivetrain", ["rwd_emrax", "4wd_dti"])
+def test_compiled_step_matches_casadi(motor, pack, drivetrain):
+    from kmslap.car.drivetrain import variant
+    car, tire = variant(drivetrain), default_tire()
+    f = vehicle.step_function(motor, tire, pack, car.hub_motor)
     p = vehicle.params(car, motor, pack, tire)
     rng = np.random.default_rng(1)
     for _ in range(30):
@@ -41,8 +43,9 @@ def test_compiled_step_matches_casadi(motor, pack):
         for k, lo, hi in [("vy", -1, 1), ("r", -1.5, 1.5), ("kappa_rl", -0.2, 1), ("kappa_rr", -0.2, 1),
                           ("alpha_fl", -0.2, 0.2), ("alpha_rr", -0.2, 0.2), ("ay_filt", -12, 12)]:
             s[vehicle.STATES.index(k)] = rng.uniform(lo, hi)
-        u = [rng.uniform(0, 230), rng.uniform(-0.3, 0.3), rng.uniform(0, 800), rng.uniform(0, 1)]
-        st = vehicle.car_step(motor, tire, pack, p, s)
+        u = [rng.uniform(0, 230), rng.uniform(-0.3, 0.3), rng.uniform(0, 800), rng.uniform(0, 1),
+             *rng.uniform(-20, 31, 4)]                    # hub motor commands
+        st = vehicle.car_step(motor, tire, pack, p, s, hub_kind=car.hub_motor)
         st(*u)
         nxt, out = f(s, u, p)
         np.testing.assert_allclose(st.state, np.array(nxt).ravel(), rtol=1e-11, atol=1e-11)

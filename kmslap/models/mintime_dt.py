@@ -143,7 +143,7 @@ def _warm_controls(env, v, ax, ay):
         si = int(np.argmin(np.abs(env.speeds - v[i])))
         aj = np.flatnonzero(ok[si])
         j = aj[np.argmin(np.abs(env.angles[aj] - th[i]))]
-        beta, steer, kfl, kfr, krl, krr, torque, brake, _ = sol[si, j]
+        beta, steer, kfl, kfr, krl, krr, torque, brake = sol[si, j][:8]
         if ay[i] < 0:
             beta, steer, kfl, kfr, krl, krr = -beta, -steer, kfr, kfl, krr, krl
         out[i] = [beta, steer, kfl, kfr, krl, krr, torque, brake]

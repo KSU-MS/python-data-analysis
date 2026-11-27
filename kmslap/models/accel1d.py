@@ -18,7 +18,9 @@ model serves every Monte Carlo plant. The equations are in sim.py's docstring.
 """
 import ctypes
 import hashlib
+import os
 import subprocess
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -258,12 +260,16 @@ def _build(name: str, make_fn, key: tuple, sources: list) -> _Built:
     if not so.exists():
         cg = ca.CodeGenerator(f"{name}.c", {"casadi_int": "long long int"})
         cg.add(make_fn())
-        c = BUILD_DIR / f"{name}_{digest}.c"
+        # unique per process: forked workers share numpy's random state, so a random
+        # name collided when two of them built the same model at once
+        unique = f"{os.getpid()}_{uuid.uuid4().hex[:8]}"
+        c = BUILD_DIR / f"{name}_{digest}_{unique}.c"
         c.write_text(cg.dump())
-        tmp = so.with_suffix(f".{np.random.randint(1 << 30)}.tmp")
+        tmp = so.with_suffix(f".{unique}.tmp")
         subprocess.run(["cc", "-O2", "-fPIC", "-shared", "-o", str(tmp), str(c), "-lm"],
                        check=True)
-        tmp.replace(so)   # atomic, for parallel test workers
+        tmp.replace(so)   # atomic, for parallel workers
+        c.unlink(missing_ok=True)
     lib = ctypes.CDLL(str(so))
     fn = getattr(lib, name)
     fn.restype = ctypes.c_int

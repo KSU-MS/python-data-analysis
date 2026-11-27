@@ -87,6 +87,14 @@ class Car:
     drs_cla_open: float | None = 1.22
     drs_aero_front_open: float | None = 0.62
 
+    # --- drivetrain (car/drivetrain.py: variants with hub motors, and their masses) ---
+    central_drive: bool = True      # the EMRAX driving the rear wheels: chain + LSD
+    hub_front: bool = False         # a hub motor at each front wheel
+    hub_rear: bool = False          # ... at each rear wheel (with central_drive off: no diff)
+    hub_motor: str = "dti"          # "dti" (F-SiC kit F-MOT) or "amk" (DD5)
+    hub_ratio: float = 13.0         # hub gearbox reduction, motor rev / wheel rev
+    hub_gear_eff: float = 0.97      # hub gearbox efficiency, ESTIMATE
+
     def open_aero(self) -> "Car":
         """The car with its wing set open by hand: the open aero as its only config
         (e.g. for the accel event, or a static low-drag endurance setup)."""

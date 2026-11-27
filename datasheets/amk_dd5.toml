@@ -1,0 +1,22 @@
+# AMK DD5-14-10-POW-18600-B5, the motor of AMK's Formula Student Racing Kit (with the
+# KW26-S5-FSE-4Q inverter: four inverters in one housing). No AMK documents in the repo:
+# numbers from public sources (AMK documentation portal listing; "System architecture of
+# a four-wheel drive Formula Student vehicle", arXiv 2211.10476; an IST thesis), the
+# rest ESTIMATES. Read by kmslap/car/drivetrain.py.
+
+model = "DD5-14-10-POW"
+peak_torque_nm = 21.0
+max_rpm = 20000
+peak_power_kw = 35.0                 # sources print 35-37.5 kW
+nominal_torque_nm = 9.8
+nominal_power_kw = 12.3
+nominal_rpm = 12000
+mass_kg = 3.6                        # ESTIMATE (public sources don't agree; ~3.5-3.7 kg)
+rotor_inertia_kgm2 = 2.7e-4          # ESTIMATE
+
+[inverter]
+mass_kg_per_motor = 1.6              # ESTIMATE: the 4-in-1 KW26 box, shared
+efficiency = 0.97                    # ESTIMATE
+
+# no loss data: the efficiency map is DTI's loss shape at the same fraction of peak
+# torque and speed (drivetrain.py), an ESTIMATE

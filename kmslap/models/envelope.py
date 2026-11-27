@@ -43,13 +43,17 @@ from kmslap import dirs
 
 WHEELS = ("fl", "fr", "rl", "rr")
 CACHE_DIR = dirs.BUILD / "envelope"
-VARIABLES = ["beta", "steer", "kappa_fl", "kappa_fr", "kappa_rl", "kappa_rr", "torque", "brake", "rho"]
+VARIABLES = ["beta", "steer", "kappa_fl", "kappa_fr", "kappa_rl", "kappa_rr", "torque", "brake",
+             "hub_f", "hub_r", "rho"]      # hub_*: each hub motor's torque on that axle (car.hub_front / rear)
 MAX_SLIP_ANGLE = 0.2     # rad, about the TTC data's range
 MAX_BETA = math.radians(8)
 # starting guesses per regime (scaled variables): accelerating, cornering, braking
-_STARTS = [np.array([0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 0.0, 6.0]),
-           np.array([0.02, 0.05, 0.0, 0.0, 0.02, 0.02, 0.3, 0.0, 10.0]),
-           np.array([0.0, 0.0, -0.08, -0.08, -0.05, -0.05, 0.0, 0.8, 12.0])]
+_STARTS = [np.array([0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 0.0, 0.0, 0.0, 6.0]),
+           np.array([0.02, 0.05, 0.0, 0.0, 0.02, 0.02, 0.3, 0.0, 0.0, 0.0, 10.0]),
+           np.array([0.0, 0.0, -0.08, -0.08, -0.05, -0.05, 0.0, 0.8, 0.0, 0.0, 12.0]),
+           # hub motors driving (ignored where the car has none: their bounds are 0)
+           np.array([0.0, 0.0, 0.08, 0.08, 0.08, 0.08, 1.0, 0.0, 1.5, 1.5, 8.0]),
+           np.array([0.02, 0.05, 0.02, 0.02, 0.02, 0.02, 0.3, 0.0, 0.5, 0.5, 10.0])]
 
 
 @dataclass
@@ -96,8 +100,9 @@ class Envelope:
 def _problem(car: Car, motor: MotorMap, pack: Pack, tire, bus_v: float, max_steer: float):
     x = ca.MX.sym("x", len(VARIABLES))
     pr = ca.MX.sym("p", 3)                       # V, cos theta, sin theta
-    beta, steer, *kap, t_s, b_s, rho = (x[i] for i in range(len(VARIABLES)))
+    beta, steer, *kap, t_s, b_s, hf_s, hr_s, rho = (x[i] for i in range(len(VARIABLES)))
     torque, brake = 100 * t_s, 1000 * b_s        # scaled for the solver
+    hub_t = {"fl": 10 * hf_s, "fr": 10 * hf_s, "rl": 10 * hr_s, "rr": 10 * hr_s}   # N m at each hub motor
     V, c_th, s_th = pr[0], pr[1], pr[2]
     m, r_t, gr = car.mass, car.tire_radius, car.final_drive
     ax, ay = rho * c_th, rho * s_th
@@ -143,18 +148,37 @@ def _problem(car: Car, motor: MotorMap, pack: Pack, tire, bus_v: float, max_stee
     bf, br = 0.5 * brake * car.brake_bias_front, 0.5 * brake * (1 - car.brake_bias_front)
     omega_m = 0.5 * (omega["rl"] + omega["rr"]) * gr
 
+    # hub motors through their gearboxes (driving only: braking is the friction brakes')
+    hub_wheel = {w: hub_t[w] * car.hub_ratio * car.hub_gear_eff for w in WHEELS}
+    if car.central_drive:
+        rear_eq = [fx["rl"] * r_t - (0.5 * t_c - t_diff - br),
+                   fx["rr"] * r_t - (0.5 * t_c + t_diff - br)]
+    else:                                        # no diff: each rear wheel on its own
+        rear_eq = [fx[w] * r_t - (hub_wheel[w] - br) for w in ("rl", "rr")]
     eq = [sum(fxb.values()) - drag - rolling - m * ax,
           sum(fyb.values()) - m * ay,
           sum(pos[w][0] * fyb[w] - pos[w][1] * fxb[w] for w in WHEELS),
-          fx["fl"] * r_t + bf, fx["fr"] * r_t + bf,
-          fx["rl"] * r_t - (0.5 * t_c - t_diff - br),
-          fx["rr"] * r_t - (0.5 * t_c + t_diff - br)]
+          fx["fl"] * r_t + bf - hub_wheel["fl"], fx["fr"] * r_t + bf - hub_wheel["fr"],
+          *rear_eq]
     # motor: map at the loaded bus voltage, smooth; 80 kW at the pack
     rpm_grid = np.arange(0.0, motor.max_rpm, 100.0)
     t_max = ca.interpolant("tmax", "bspline", [rpm_grid],
                            [motor.max_torque(r, bus_v) for r in rpm_grid])
+    hub_rpm = {w: omega[w] * car.hub_ratio * 60 / (2 * math.pi) for w in WHEELS}
+    hub_on = {"fl": car.hub_front, "fr": car.hub_front, "rl": car.hub_rear, "rr": car.hub_rear}
+    if car.hub_front or car.hub_rear:
+        from kmslap.car.drivetrain import HubMotor
+        hub = HubMotor(car.hub_motor)
+        rpms, torques, t_tbl, eff_tbl = hub.tables()
+        hub_tmax = ca.interpolant("hub_tmax", "bspline", [rpms], t_tbl)
+        hub_eff = ca.interpolant("hub_eff", "bspline", [rpms, torques], eff_tbl.ravel(order="F"))
+        p_hub = sum(hub_t[w] * hub_rpm[w] * 2 * math.pi / 60 / hub_eff(ca.vertcat(hub_rpm[w], hub_t[w]))
+                    for w in WHEELS if hub_on[w])
+    else:
+        hub_tmax, p_hub = None, 0
     ineq = [t_max(omega_m * 60 / (2 * math.pi)) - torque,
-            car.power_limit * car.motor_eff - torque * omega_m]
+            car.power_limit * car.motor_eff - torque * omega_m - p_hub * car.motor_eff]
+    ineq += [hub_tmax(hub_rpm[w]) - hub_t[w] for w in ("fl", "rl") if hub_on[w]]
     ineq += [alpha[w] for w in WHEELS]
     ineq += [fz[w] for w in WHEELS]
     lat_yaw = ca.vertcat(sum(fyb.values()) / m - yaw * vx,
@@ -163,11 +187,18 @@ def _problem(car: Car, motor: MotorMap, pack: Pack, tire, bus_v: float, max_stee
     ineq += [-(jac[0, 0] + jac[1, 1]), jac[0, 0] * jac[1, 1] - jac[0, 1] * jac[1, 0]]
     g = ca.substitute(ca.vertcat(*eq, *ineq), ca.vertcat(vy, yaw), ca.vertcat(V * beta, ay / V))
     n_eq = len(eq)
-    lbg = [0.0] * n_eq + [0.0, 0.0] + [-MAX_SLIP_ANGLE] * 4 + [50.0] * 4 + [0.0, 0.0]
-    ubg = [0.0] * n_eq + [ca.inf, ca.inf] + [MAX_SLIP_ANGLE] * 4 + [ca.inf] * 4 + [ca.inf, ca.inf]
-    lbx = [-MAX_BETA, -max_steer, -0.25, -0.25, -0.25, -0.25, 0.0, 0.0, 0.0]
-    ubx = [MAX_BETA, max_steer, 0.0, 0.0, 0.95, 0.95, motor.peak_torque / 100,
-           car.max_brake_torque / 1000, 4 * G]
+    n_hub = sum(1 for w in ("fl", "rl") if hub_on[w])
+    lbg = [0.0] * n_eq + [0.0, 0.0] + [0.0] * n_hub + [-MAX_SLIP_ANGLE] * 4 + [50.0] * 4 + [0.0, 0.0]
+    ubg = [0.0] * n_eq + [ca.inf, ca.inf] + [ca.inf] * n_hub + [MAX_SLIP_ANGLE] * 4 + [ca.inf] * 4 + [ca.inf, ca.inf]
+    front_kap = 0.95 if car.hub_front else 0.0
+    peak_hub = 0.0
+    if car.hub_front or car.hub_rear:
+        from kmslap.car.drivetrain import HubMotor
+        peak_hub = HubMotor(car.hub_motor).peak_torque / 10
+    lbx = [-MAX_BETA, -max_steer, -0.25, -0.25, -0.25, -0.25, 0.0, 0.0, 0.0, 0.0, 0.0]
+    ubx = [MAX_BETA, max_steer, front_kap, front_kap, 0.95, 0.95,
+           motor.peak_torque / 100 if car.central_drive else 0.0, car.max_brake_torque / 1000,
+           peak_hub if car.hub_front else 0.0, peak_hub if car.hub_rear else 0.0, 4 * G]
     solver = ca.nlpsol("gg", "ipopt", {"x": x, "p": pr, "f": -rho, "g": g},
                        {"ipopt.print_level": 0, "print_time": False, "ipopt.max_iter": 300,
                         "ipopt.tol": 1e-8})
@@ -188,7 +219,7 @@ def gg_envelope(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | s
                            tire.table_key_2d(), tire.scale, list(speeds), n_angles, soc,
                            max_steering_wheel)).encode())
     h.update(np.array(motor.table).tobytes())
-    for src in (FilePath(__file__), dirs.PACKAGE / "car" / "tire.py"):
+    for src in (FilePath(__file__), dirs.PACKAGE / "car" / "tire.py", dirs.PACKAGE / "car" / "drivetrain.py"):
         h.update(src.read_bytes())
     path = CACHE_DIR / f"{h.hexdigest()[:16]}.npz"
     if cache and path.exists():
@@ -215,8 +246,14 @@ def gg_envelope(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | s
                 if solver.stats()["success"] and not (ok[i, j] and xs[-1] <= rho[i, j]):
                     rho[i, j], sol[i, j], ok[i, j] = xs[-1], xs, True
             guess = sol[i, j] if ok[i, j] else None
+    # a point no start converged: from its neighbours at that speed (still marked)
+    for i in range(len(speeds)):
+        good = ok[i]
+        if 2 <= good.sum() < n_angles:
+            rho[i, ~good] = np.interp(angles[~good], angles[good], rho[i, good])
     sol[..., 6] *= 100     # back to Nm
     sol[..., 7] *= 1000
+    sol[..., 8:10] *= 10
     env = Envelope(speeds, angles, rho, sol, ok)
     if cache:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
