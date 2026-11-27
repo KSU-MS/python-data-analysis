@@ -10,10 +10,15 @@ Writes into --out:
     robustness.png       Monte Carlo: % over ideal with every coefficient wrong
     controller_view.png  what the C++ controller saw vs the truth
     sysid.png            log -> fit of a hidden car: tire force model vs measured
+    gear_ratio_check.png controller set up for the wrong final drive, with and
+                         without its gear ratio plausibility check
     summary.md           tables + Mermaid charts (GitHub renders these inline; CI
                          appends this to the job summary)
+    metrics.json         headline numbers; `python -m accel.report_diff` compares
+                         two of these (CI posts that on pull requests)
 """
 import argparse
+import json
 import math
 import tempfile
 import time
@@ -27,7 +32,7 @@ import numpy as np  # noqa: E402
 from matplotlib.animation import FuncAnimation, PillowWriter  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
-from .firmware import FirmwareController, Sensors, read_log, replay, write_log  # noqa: E402
+from .firmware import FAULTS, FirmwareController, Sensors, read_log, replay, write_log  # noqa: E402
 from .params import G, Car  # noqa: E402
 from .powertrain import MotorMap  # noqa: E402
 from .sim import LENGTH, STAGE, quasi_static, simulate  # noqa: E402
@@ -217,6 +222,33 @@ def _fig_sysid(fit, path):
     plt.close(fig)
 
 
+def _fig_gear_ratio(runs, true_fd, belief_fd, path):
+    fig, axes = plt.subplots(2, 1, figsize=(9, 6.5), sharex=True)
+    for i, (n, r) in enumerate(runs.items()):
+        d = r.df.query("t < 4")
+        axes[0].plot(d.t, d.v, color=COLORS[i], label=n)
+        if r.controller_log is None:
+            continue
+        log = r.controller_log.query("0 <= t < 4")
+        m = log[log.gear_ratio > 0]
+        axes[1].step(m.t, m.gear_ratio, where="post", color=COLORS[i])
+        f = log[log.faults > 0]
+        if len(f):
+            for ax in axes:
+                ax.axvline(f.t.iloc[0], color=COLORS[i], ls=":")
+    axes[1].axhline(belief_fd, color="k", lw=1, label=f"configured FD {belief_fd:g}")
+    axes[1].axhline(true_fd, color="0.5", lw=1, ls="--", label=f"actual FD {true_fd:g}")
+    axes[0].set_ylabel("speed (m/s)")
+    axes[1].set_ylabel("measured gear ratio")
+    axes[0].legend(fontsize=8)
+    axes[1].legend(fontsize=8)
+    axes[-1].set_xlabel("time (s)  (dotted: fault latched, TC off)")
+    fig.suptitle(f"VCU configured for FD {belief_fd:g} on a car geared {true_fd:g}")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+
 def _mermaid_lines(title, x, series, y_label):
     if not all(np.isfinite(v).all() for v in series.values()):
         return ["_(chart skipped: a run didn't finish the 75 m; see fd_sweep.png)_"]
@@ -241,6 +273,11 @@ def main():
     t0 = time.perf_counter()
     car, motor = Car(), MotorMap("228HV")
     md = ["# Accel sim report", ""]
+    metrics = {}
+
+    def metric(key, value, unit, better="lower"):
+        metrics[key] = {"value": None if not np.isfinite(value) else float(value),
+                        "unit": unit, "better": better}
 
     # headline runs + GIF
     ideal = quasi_static(car, motor)
@@ -254,8 +291,11 @@ def main():
            "| run | 75 m time | vs ideal | trap speed | peak slip |", "|---|---|---|---|---|",
            f"| ideal TC (quasi-static) | {ideal.accel_time:.3f} s | | "
            f"{ideal.df.v.iloc[-1] * 3.6:.1f} km/h | |"]
+    metric("accel time: ideal TC", ideal.accel_time, "s")
     for n, r in runs.items():
         s = r.summary()
+        metric(f"accel time: {n}", r.accel_time, "s")
+        metric(f"peak slip: {n}", s["max_slip"], "")
         md.append(f"| {n} | {r.accel_time:.3f} s | {100 * (r.accel_time / ideal.accel_time - 1):+.2f}% | "
                   f"{s['trap_kmh']:.1f} km/h | {s['max_slip']:.2f} |")
     drag_race_gif(runs, car, out / "drag_race.gif")
@@ -265,6 +305,8 @@ def main():
     # final drive sweep
     sweep = _fd_sweep(motor, [2.4, 2.7, 3.0, 3.5, 4.0, 4.5, 5.0])
     _fig_fd(sweep, out / "fd_sweep.png")
+    for fd, *_, vcu_time in sweep:
+        metric(f"accel time: VCU mu_adaptive, FD {fd:g}", vcu_time, "s")
     md += ["", "## Final drive", "", "Lines, top to bottom at FD 2.7: no TC, VCU mu_adaptive, ideal TC.", ""]
     md += _mermaid_lines("Accel time (s) vs final drive", sweep[:, 0],
                          {"no TC": sweep[:, 2], "VCU": sweep[:, 3], "ideal": sweep[:, 1]}, "s")
@@ -280,6 +322,35 @@ def main():
            "| controller | mean | p90 | worst |", "|---|---|---|---|"]
     for c in cols:
         md.append(f"| {c} | {mc[c].mean():+.2f}% | {mc[c].quantile(0.9):+.2f}% | {mc[c].max():+.2f}% |")
+        metric(f"robustness mean: {c}", mc[c].mean(), "% over ideal")
+        metric(f"robustness worst: {c}", mc[c].max(), "% over ideal")
+
+    # plausibility: controller configured with the wrong final drive
+    true_fd, belief_fd = 4.0, car.final_drive
+    wrong = Car(final_drive=true_fd)
+    ratio_runs = {
+        "no TC": simulate(wrong, motor),
+        "VCU, no ratio check": simulate(wrong, motor, controller=FirmwareController(
+            mode="mu_adaptive", belief=car, overrides=dict(ratio_tolerance=1e9))),
+        "VCU": simulate(wrong, motor, controller=FirmwareController(mode="mu_adaptive", belief=car)),
+    }
+    _fig_gear_ratio(ratio_runs, true_fd, belief_fd, out / "gear_ratio_check.png")
+    log = ratio_runs["VCU"].controller_log
+    faulted = log[(log.faults & FAULTS["gear_ratio"]) > 0]
+    d = ratio_runs["VCU"].df
+    fault_x = d.x[d.t <= faulted.t.iloc[0]].iloc[-1] if len(faulted) else math.inf
+    fmt = lambda r: f"{r.accel_time:.3f} s" if np.isfinite(r.accel_time) else "didn't finish"
+    md += ["", f"## Plausibility: VCU set up for FD {belief_fd:g}, car geared {true_fd:g}", "",
+           "The controller counts rear wheel sensor teeth against motor revs; when the ratio "
+           "disagrees with its configured final drive it latches a fault and passes the "
+           "driver's torque straight through.", "",
+           "| run | 75 m time |", "|---|---|"]
+    md += [f"| {n} | {fmt(r)} |" for n, r in ratio_runs.items()]
+    md += ["", f"Fault latched after **{fault_x:.1f} m** (measured ratio "
+               f"{log.gear_ratio[log.gear_ratio > 0].iloc[-1]:.2f})." if len(faulted)
+           else "**No fault latched.**"]
+    metric("gear ratio fault: distance to detect", fault_x, "m")
+    metric("gear ratio fault: accel time", ratio_runs["VCU"].accel_time, "s")
 
     # log -> replay -> fit loop on a hidden car
     real = sample_plants(1, car, seed=123)[0]
@@ -301,9 +372,12 @@ def main():
         lo, hi = narrowed[k]
         md.append(f"| {k} | {real.draw[k]:.4f} | {fit.params[k]:.4f} | "
                   f"{RANGES[k][0]:g} to {RANGES[k][1]:g} | {lo:.4f} to {hi:.4f} |")
+        metric(f"sysid error: {k}", 100 * abs(fit.params[k] / real.draw[k] - 1), "%")
 
     md += ["", f"_Generated in {time.perf_counter() - t0:.0f} s._", ""]
+    metric("log replay identical", float(identical), "", better="higher")
     (out / "summary.md").write_text("\n".join(md))
+    (out / "metrics.json").write_text(json.dumps(metrics, indent=1))
     print("\n".join(md))
     if not identical:
         raise SystemExit("log replay did not reproduce the controller's outputs")

@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from accel import Car, MotorMap, PacejkaTire, quasi_static, simulate
-from accel.firmware import (FirmwareController, Inputs, Outputs, Sensors, load_library,
+from accel.firmware import (FAULTS, FirmwareController, Inputs, Outputs, Sensors, load_library,
                             read_log, replay, warmup, write_log)
 from accel.sysid import fit_plant
 from accel.uncertainty import RANGES
@@ -73,6 +73,22 @@ def test_closed_loop_with_real_sensors(motor, mode):
     assert r.df.query("t > 0.5")["slip"].max() < 0.25
     log = r.controller_log
     assert np.abs(log["v_est"].to_numpy() - np.interp(log["t"], r.df["t"], r.df["v"])).max() < 0.3
+
+
+def test_gear_ratio_check(motor):
+    # configured for FD 3.0 on a car geared 4.0: slip reads ~33% high, so TC would
+    # hold the car on the line. The ratio check faults and hands torque back.
+    fc = FirmwareController(mode="mu_adaptive", belief=Car(final_drive=3.0))
+    r = simulate(Car(final_drive=4.0), motor, controller=fc)
+    log = r.controller_log
+    assert log.faults.iloc[-1] == FAULTS["gear_ratio"]
+    assert r.df.x[r.df.t <= log.t[log.faults > 0].iloc[0]].iloc[-1] < 8.0
+    assert np.isfinite(r.accel_time)
+    measured = log.gear_ratio[log.gear_ratio > 0]
+    assert measured.iloc[-1] == pytest.approx(4.0, rel=0.02)
+    # and never on a correctly configured car
+    ok = simulate(Car(), motor, controller=FirmwareController(mode="mu_adaptive"))
+    assert ok.controller_log.faults.max() == 0
 
 
 def test_replay_reproduces_outputs_exactly(motor):

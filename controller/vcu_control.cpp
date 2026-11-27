@@ -53,6 +53,57 @@ struct WheelSpeed {
   }
 };
 
+// Gear ratio from what the sensors count, independent of slip and tire radius:
+// motor revs (integrated rpm) over rear wheel revs (sensor teeth). Each rear
+// wheel's window runs edge to edge, with the motor revs taken back to that edge's
+// time. Summing both wheels gives the diff carrier speed, so it holds in corners.
+struct RatioCheck {
+  bool anchored[2] = {false, false};
+  float anchor[2] = {0, 0};      // motor revs at the window's first edge
+  float motor_at[2] = {0, 0};    // motor revs at the latest edge
+  uint32_t edges[2] = {0, 0};
+  int32_t fails = 0;
+  float ratio = 0;
+
+  void reset() { anchored[0] = anchored[1] = false; }
+
+  // returns true if this update completed a measurement that's out of tolerance
+  // ratio_fail_count times in a row
+  bool update(const vcu_inputs_t &in, const WheelSpeed *rear, float motor_rev,
+              float motor_rpm, const vcu_config_t &c) {
+    if (motor_rpm <= 0 || !rear[0].have_ref || !rear[1].have_ref) {
+      reset();  // stopped or reversing: the teeth don't say which way they turn
+      return false;
+    }
+    for (int i = 0; i < 2; i++) {
+      uint16_t n = in.ws_edges[VCU_RL + i];
+      if (n == 0) continue;
+      float since = (float)(in.now_us - in.ws_last_edge_us[VCU_RL + i]) * 1e-6f;
+      float m = motor_rev - motor_rpm / 60.0f * since;
+      if (!anchored[i]) {
+        anchored[i] = true;
+        anchor[i] = m;
+        edges[i] = 0;
+      } else {
+        edges[i] += n;
+      }
+      motor_at[i] = m;
+    }
+    float need = 2.0f * c.ratio_check_revs * (float)c.ws_teeth;
+    if (!anchored[0] || !anchored[1] || edges[0] == 0 || edges[1] == 0 ||
+        (float)(edges[0] + edges[1]) < need)
+      return false;
+    float wheel_rev = (float)(edges[0] + edges[1]) / (float)c.ws_teeth;
+    ratio = (motor_at[0] - anchor[0] + motor_at[1] - anchor[1]) / wheel_rev;
+    for (int i = 0; i < 2; i++) {
+      anchor[i] = motor_at[i];
+      edges[i] = 0;
+    }
+    fails = fabsf(ratio / c.final_drive - 1.0f) > c.ratio_tolerance ? fails + 1 : 0;
+    return fails >= c.ratio_fail_count;
+  }
+};
+
 struct State {
   vcu_config_t cfg;
   WheelSpeed ws[4];
@@ -73,6 +124,10 @@ struct State {
   float torque_ff;
   float slip;
   vcu_learned_t learned;
+
+  float motor_rev;
+  RatioCheck ratio_check;
+  uint32_t faults;
 
   float rear_load(float accel, float v) const {
     const vcu_config_t &c = cfg;
@@ -117,7 +172,7 @@ struct State {
 
   void control(float driver, float dt) {
     const vcu_config_t &c = cfg;
-    switch (c.mode) {
+    switch (faults ? (int32_t)VCU_MODE_PASSTHROUGH : c.mode) {
       case VCU_MODE_SLIP_PI:
         run_pi(1.0f, dt);
         torque_cmd = driver * scale;
@@ -182,6 +237,9 @@ struct State {
     for (int i = 0; i < 4; i++)
       ws[i].update(in.ws_edges[i], in.ws_last_edge_us[i], in.now_us, c);
     if (in.motor_rpm_new) motor_rpm = in.motor_rpm;
+    motor_rev += motor_rpm / 60.0f * dt;
+    if (ratio_check.update(in, &ws[VCU_RL], motor_rev, motor_rpm, c))
+      faults |= VCU_FAULT_GEAR_RATIO;
     if (in.motor_torque_new) {
       torque_fb = in.motor_torque_fb;
       have_torque_fb = true;
@@ -222,6 +280,8 @@ struct State {
     out.slip = slip;
     out.scale = scale;
     out.torque_ff_nm = torque_ff;
+    out.gear_ratio = ratio_check.ratio;
+    out.faults = faults;
     out.learned = learned;
   }
 };
@@ -261,6 +321,8 @@ void vcu_init(void *state, const vcu_config_t *config, const vcu_learned_t *lear
   s->torque_cmd = 0;
   s->torque_ff = 0;
   s->slip = 0;
+  s->motor_rev = 0;
+  s->faults = 0;
   vcu_learned_t l = {config->tire_radius, config->tire_radius, 0.0f, config->mu_init};
   if (learned) {
     if (learned->r_front > 0) l.r_front = learned->r_front;
@@ -288,7 +350,7 @@ void vcu_make_log_record(const void *state, const vcu_inputs_t *in, const vcu_ou
   r->motor_rpm_new = in->motor_rpm_new;
   r->motor_torque_new = in->motor_torque_new;
   r->vn_new = in->vn_new;
-  r->reserved = 0;
+  r->faults = (uint8_t)out->faults;
   r->motor_rpm = in->motor_rpm;
   r->motor_torque_fb = in->motor_torque_fb;
   r->vn_vel_x = in->vn_vel_x;

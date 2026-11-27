@@ -33,7 +33,8 @@ MODE_GAINS = {
     "slip_pi": dict(kp=0.05, ki=0.3, recover_gain=3.0),
     "mu_adaptive": dict(kp=0.1, ki=0.3, recover_gain=1.0),
 }
-LOG_VERSION = 1
+LOG_VERSION = 2
+FAULTS = {"gear_ratio": 1 << 0}  # vcu_fault bits
 _f, _u8, _u16, _u32, _i32 = (ctypes.c_float, ctypes.c_uint8, ctypes.c_uint16,
                              ctypes.c_uint32, ctypes.c_int32)
 
@@ -55,6 +56,7 @@ class Config(ctypes.Structure):
         ("recover_gain", _f), ("scale_max", _f), ("mu_init", _f), ("mu_min", _f),
         ("mu_max", _f), ("mu_adapt_rate", _f), ("mu_transfer_rate", _f),
         ("torque_track_tol", _f),
+        ("ratio_check_revs", _f), ("ratio_tolerance", _f), ("ratio_fail_count", _i32),
     ]
 
 
@@ -77,7 +79,8 @@ class Inputs(ctypes.Structure):
 class Outputs(ctypes.Structure):
     _fields_ = [
         ("torque_cmd_nm", _f), ("wheel_omega", _f * 4), ("v_est", _f), ("accel_est", _f),
-        ("slip", _f), ("scale", _f), ("torque_ff_nm", _f), ("learned", Learned),
+        ("slip", _f), ("scale", _f), ("torque_ff_nm", _f), ("gear_ratio", _f), ("faults", _u32),
+        ("learned", Learned),
     ]
 
 
@@ -85,7 +88,7 @@ class Outputs(ctypes.Structure):
 LOG_DTYPE = np.dtype([
     ("version", "<u2"), ("mode", "<u2"), ("now_us", "<u4"),
     ("ws_edges", "<u2", 4), ("ws_last_edge_us", "<u4", 4),
-    ("motor_rpm_new", "u1"), ("motor_torque_new", "u1"), ("vn_new", "u1"), ("reserved", "u1"),
+    ("motor_rpm_new", "u1"), ("motor_torque_new", "u1"), ("vn_new", "u1"), ("faults", "u1"),
     ("motor_rpm", "<f4"), ("motor_torque_fb", "<f4"), ("vn_vel_x", "<f4"), ("vn_accel_x", "<f4"),
     ("driver_torque_nm", "<f4"), ("torque_cmd_nm", "<f4"), ("v_est", "<f4"), ("slip", "<f4"),
     ("scale", "<f4"), ("mu", "<f4"),
@@ -145,7 +148,7 @@ INPUT_COLUMNS = ["now_us", *[f"ws_edges_{w}" for w in WHEELS],
                  "motor_rpm_new", "motor_rpm", "motor_torque_new", "motor_torque_fb",
                  "vn_new", "vn_vel_x", "vn_accel_x", "driver_torque_nm"]
 OUTPUT_COLUMNS = ["t", "torque_cmd", "v_est", "accel_est", "slip", "scale", "torque_ff",
-                  *[f"omega_{w}" for w in WHEELS], *LEARNED]
+                  "gear_ratio", "faults", *[f"omega_{w}" for w in WHEELS], *LEARNED]
 
 
 @dataclass
@@ -182,6 +185,10 @@ class FirmwareController:
             slip_target=0.10, slip_speed_floor=1.0,
             scale_max=1.5, mu_init=1.2, mu_min=0.6, mu_max=2.5, mu_adapt_rate=1.0,
             mu_transfer_rate=1.0, torque_track_tol=5.0,
+            # final drive options differ by 10%+. Over 2 rear wheel revs the measured
+            # ratio is within 5% on a correct car (worst of 120 Monte Carlo runs, at
+            # launch, where rpm frames lag); a wrong ratio faults within ~6 m
+            ratio_check_revs=2.0, ratio_tolerance=0.08, ratio_fail_count=2,
         )
         # gains swept per mode with these sensor models over grip 0.85-1.15 (the
         # Python SlipTC gains, kp 0.3 ki 1, limit-cycle once CAN rates, latency and
@@ -305,7 +312,7 @@ def _input_row(inp: Inputs) -> tuple:
 
 def _output_row(t: float, o: Outputs) -> tuple:
     return (t, o.torque_cmd_nm, o.v_est, o.accel_est, o.slip, o.scale, o.torque_ff_nm,
-            *o.wheel_omega, *(getattr(o.learned, k) for k in LEARNED))
+            o.gear_ratio, o.faults, *o.wheel_omega, *(getattr(o.learned, k) for k in LEARNED))
 
 
 def replay(inputs: pd.DataFrame, config: Config, learned: dict | None = None,
@@ -346,7 +353,7 @@ def read_log(path) -> tuple[pd.DataFrame, pd.DataFrame]:
     for k in INPUT_COLUMNS[9:]:
         cols[k] = rec[k]
     outputs = pd.DataFrame({k: rec[k] for k in
-                            ["now_us", "torque_cmd_nm", "v_est", "slip", "scale", "mu"]})
+                            ["now_us", "torque_cmd_nm", "v_est", "slip", "scale", "mu", "faults"]})
     return pd.DataFrame(cols)[INPUT_COLUMNS], outputs
 
 

@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-#define VCU_LOG_VERSION 1
+#define VCU_LOG_VERSION 2
 
 enum vcu_mode {
   VCU_MODE_PASSTHROUGH = 0,  // driver request straight to the inverter
@@ -26,6 +26,15 @@ enum vcu_mode {
 };
 
 enum { VCU_FL = 0, VCU_FR = 1, VCU_RL = 2, VCU_RR = 3 };
+
+// Latched until vcu_init. Any fault drops the controller to passthrough: the
+// driver keeps the car, like a car with no TC.
+enum vcu_fault {
+  // motor revs / rear wheel revs (counted on the rear sensors' teeth) disagrees
+  // with final_drive: wrong final_drive or ws_teeth in the config, or a bad
+  // sensor. Slip and the grip map both scale with the ratio, so TC would be garbage.
+  VCU_FAULT_GEAR_RATIO = 1 << 0,
+};
 
 typedef struct {
   int32_t mode;
@@ -70,6 +79,11 @@ typedef struct {
   float mu_adapt_rate;         // 1/s, mu_hat toward grip observed from accel
   float mu_transfer_rate;      // 1/s, mu_hat absorbs the PI's steady correction
   float torque_track_tol;      // Nm, learn only while feedback tracks the command
+
+  // plausibility
+  float ratio_check_revs;      // rear wheel revs per gear ratio measurement
+  float ratio_tolerance;       // fault if |measured / final_drive - 1| exceeds this...
+  int32_t ratio_fail_count;    // ...this many measurements in a row
 } vcu_config_t;
 
 // What the controller learns; persist across power cycles. Zeros = nothing
@@ -110,6 +124,8 @@ typedef struct {
   float slip;                    // measured slip ratio fed to the controller
   float scale;                   // controller multiplier
   float torque_ff_nm;            // MU_ADAPTIVE map torque
+  float gear_ratio;              // last measured motor / rear wheel ratio, 0 until measured
+  uint32_t faults;               // vcu_fault bits
   vcu_learned_t learned;
 } vcu_outputs_t;
 
@@ -125,7 +141,7 @@ typedef struct {
   uint8_t motor_rpm_new;
   uint8_t motor_torque_new;
   uint8_t vn_new;
-  uint8_t reserved;
+  uint8_t faults;                // vcu_fault bits (low 8)
   float motor_rpm;
   float motor_torque_fb;
   float vn_vel_x;

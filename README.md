@@ -161,6 +161,12 @@ meant to compile into the VCU.
 - Calibration: the controller learns tire radii (front sensors vs VectorNav, rear motor vs ground speed
   while coasting), VectorNav accel bias (while staged) and grip; persist `vcu_learned_t` across runs.
   `accel.firmware.warmup()` simulates the calibration drive.
+- Plausibility: the controller measures the gear ratio as motor revs over rear wheel revs
+  (counted on the rear sensors' teeth, so slip and tire radius don't matter). If it disagrees
+  with the configured `final_drive` by more than 8% twice in a row, it latches
+  `VCU_FAULT_GEAR_RATIO` and passes the driver's torque straight through: with the wrong
+  ratio, slip reads wrong and TC can hold the car on the line. A wrong ratio is caught
+  within ~6 m of rolling, so the warmup drive to the line should catch it before a launch.
 - Logging: `vcu_log_record_t` (packed binary, `vcu_control.h`) is what the car writes; `write_log` /
   `read_log` / `replay` in `accel/firmware.py`.
 - `accel/sysid.py`: fits grip, mass, tire radius, rear inertia and tire relaxation from a log and narrows
@@ -178,8 +184,11 @@ tire force and load) with speed / accel / slip / torque / TC / learned mu plots 
 
 `python -m accel.report --out report/` runs the headline sims and writes a drag race GIF
 (rear wheels colored by slip), launch / final drive / robustness / controller-vs-truth /
-system ID plots and a `summary.md`. CI runs it on every push: the tables and charts are on
-the run's summary page, and the GIF and plots are in the `accel-report` artifact.
+system ID / gear ratio check plots, a `summary.md` and a `metrics.json`. CI runs it on
+every push: the tables and charts are on the run's summary page, and the GIF and plots are
+in the `accel-report` artifact. On pull requests CI also runs the base branch's report and
+posts `python -m accel.report_diff base/metrics.json report/metrics.json` as a PR comment
+(accel times, robustness, system ID error, ... better / worse than base), updated on each push.
 
 The Rerun viewer sends anonymous usage stats by default (features used, not your data);
 `rerun analytics disable` turns that off.
