@@ -54,7 +54,11 @@ def job_script(dir_: str, sha: str, command: list[str], use_uv: bool) -> str:
     """The shell script `run` executes on the remote."""
     cmd = shlex.join(command)
     runner = f"uv run {cmd}" if use_uv else f"nix develop -c {cmd}"
-    return (f"set -e; cd {shlex.quote(dir_)}; git checkout -q --detach {sha}; "
+    # the clone's nbstripout filter (set by the dev shell) isn't on PATH out here, and a
+    # checkout has nothing to strip
+    checkout = (f"git -c filter.nbstripout.clean=cat -c filter.nbstripout.required=false "
+                f"checkout -q --detach {sha}")
+    return (f"set -e; cd {shlex.quote(dir_)}; {checkout}; "
             f"echo \"[remote-run] $(hostname): {sha[:10]}: {cmd}\"; {runner}")
 
 
