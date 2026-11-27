@@ -15,5 +15,5 @@ def test_map_in_order_and_timeline(tmp_path):
 
 def test_task_errors_surface():
     with Cluster(local_workers=2, dashboard=False) as c:
-        with pytest.raises(RuntimeError, match="math domain error"):
+        with pytest.raises(RuntimeError, match="ValueError"):   # message wording varies by Python
             c.map("math:sqrt", [4.0, -1.0])
