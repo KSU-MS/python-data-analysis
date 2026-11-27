@@ -20,6 +20,7 @@ Writes into --out:
                          two of these (CI posts that on pull requests)
 """
 import argparse
+import dataclasses
 import json
 import math
 import tempfile
@@ -156,10 +157,10 @@ def _fig_launch(runs, path):
     plt.close(fig)
 
 
-def _fd_sweep(motor, fds):
+def _fd_sweep(car, motor, fds):
     rows = []
     for fd in fds:
-        c = Car(final_drive=fd)
+        c = dataclasses.replace(car, final_drive=fd)
         rows.append((fd, quasi_static(c, motor).accel_time, simulate(c, motor).accel_time,
                      # the controller must be configured with the car's final drive: with
                      # the wrong ratio its rear wheel speed, and so its slip, is garbage
@@ -198,7 +199,7 @@ def _fig_controller(run, path):
     fig, axes = plt.subplots(3, 1, figsize=(9, 8), sharex=True)
     axes[0].plot(d.t, d.v, "k", label="true speed")
     axes[0].plot(log.t, log.v_est, color=COLORS[1], label="v_est (VectorNav + wheels)")
-    axes[0].plot(log.t, log.omega_fl * Car().tire_radius, color=COLORS[3], label="front wheel sensor")
+    axes[0].plot(log.t, log.omega_fl * Car.tire_radius, color=COLORS[3], label="front wheel sensor")
     axes[1].plot(d.t, d.slip.clip(-0.3, 1), "k", label="true slip")
     axes[1].plot(log.t, log.slip.clip(-0.3, 1), color=COLORS[1], label="measured slip")
     axes[2].plot(d.t, d.motor_torque, "k", label="motor torque")
@@ -303,7 +304,8 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
-    car, motor = Car(), MotorMap("228HV")
+    # accel: wing set open (lowest drag), and the controller configured to match
+    car, motor = Car().open_aero(), MotorMap("228HV")
     md = ["# Accel sim report", ""]
     metrics = {}
 
@@ -315,8 +317,9 @@ def main():
     ideal = quasi_static(car, motor)
     runs = {
         "no TC": simulate(car, motor),
-        "VCU slip_pi": simulate(car, motor, controller=FirmwareController(mode="slip_pi")),
-        "VCU mu_adaptive": simulate(car, motor, controller=FirmwareController(mode="mu_adaptive")),
+        "VCU slip_pi": simulate(car, motor, controller=FirmwareController(mode="slip_pi", belief=car)),
+        "VCU mu_adaptive": simulate(car, motor, controller=FirmwareController(mode="mu_adaptive",
+                                                                              belief=car)),
     }
     md += [f"Current car: EMRAX 228HV, COSMX 144s1p, FD {car.final_drive:g}, LC0 tire. "
            "Download the `accel-report` artifact for `drag_race.gif` and the plots.", "",
@@ -335,7 +338,7 @@ def main():
     _fig_controller(runs["VCU mu_adaptive"], out / "controller_view.png")
 
     # final drive sweep
-    sweep = _fd_sweep(motor, [2.4, 2.7, 3.0, 3.5, 4.0, 4.5, 5.0])
+    sweep = _fd_sweep(car, motor, [2.4, 2.7, 3.0, 3.5, 4.0, 4.5, 5.0])
     _fig_fd(sweep, out / "fd_sweep.png")
     for fd, *_, vcu_time in sweep:
         metric(f"accel time: VCU mu_adaptive, FD {fd:g}", vcu_time, "s")
@@ -345,7 +348,7 @@ def main():
 
     # robustness
     fw = lambda mode: (lambda pl: dict(controller=FirmwareController(
-        mode=mode, sensors=Sensors(vn_accel_bias=pl.vn_accel_bias))))
+        mode=mode, belief=car, sensors=Sensors(vn_accel_bias=pl.vn_accel_bias))))
     strategies = {"no TC": lambda pl: {}, "VCU slip_pi": fw("slip_pi"), "VCU mu_adaptive": fw("mu_adaptive")}
     mc = monte_carlo(strategies, sample_plants(args.plants, car), motor)
     cols = list(strategies)
@@ -359,7 +362,7 @@ def main():
 
     # plausibility: controller configured with the wrong final drive
     true_fd, belief_fd = 4.0, car.final_drive
-    wrong = Car(final_drive=true_fd)
+    wrong = dataclasses.replace(car, final_drive=true_fd)
     ratio_runs = {
         "no TC": simulate(wrong, motor),
         "VCU, no ratio check": simulate(wrong, motor, controller=FirmwareController(
@@ -400,7 +403,7 @@ def main():
 
     # log -> replay -> fit loop on a hidden car
     real = sample_plants(1, car, seed=123)[0]
-    vcu = FirmwareController(mode="slip_pi", sensors=Sensors(vn_accel_bias=real.vn_accel_bias))
+    vcu = FirmwareController(mode="slip_pi", belief=car, sensors=Sensors(vn_accel_bias=real.vn_accel_bias))
     simulate(real.car, motor, tire=real.tire, relaxation_length=real.relaxation_length, controller=vcu)
     with tempfile.TemporaryDirectory() as tmp:
         write_log(Path(tmp) / "run.vcu", vcu.records())

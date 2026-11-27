@@ -20,8 +20,8 @@ def test_envelope_solves(env):
     for i in range(len(env.speeds)):
         accel, lat, brake = env.rho[i, 0], env.ay_max(env.speeds[i]), env.rho[i, -1]
         assert 0.6 * 9.81 < accel < 1.0 * 9.81      # traction / motor limited launch
-        assert 1.1 * 9.81 < lat < 1.6 * 9.81
-        assert 1.3 * 9.81 < brake < 2.0 * 9.81      # all four tires
+        assert 1.1 * 9.81 < lat < 2.2 * 9.81      # downforce adds grip with speed
+        assert 1.3 * 9.81 < brake < 2.6 * 9.81      # all four tires
         # combined: less acceleration available while cornering hard
         acc_hi, brk_hi = env.ax_limits(env.speeds[i], 0.8 * lat)
         assert 0 < acc_hi < accel and 0 > brk_hi > -brake

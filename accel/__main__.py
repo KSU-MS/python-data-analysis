@@ -23,7 +23,7 @@ def main():
     motor = MotorMap(args.motor)
     rows, first = [], None
     for fd in args.fd:
-        car = Car(final_drive=fd, mass=args.mass)
+        car = Car(final_drive=fd, mass=args.mass).open_aero()   # accel: wing open
         runs = [quasi_static(car, motor, args.pack, tire),
                 simulate(car, motor, args.pack, tire),
                 simulate(car, motor, args.pack, tire, tc=SlipTC.for_tire(tire))]

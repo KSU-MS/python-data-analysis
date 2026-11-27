@@ -14,6 +14,7 @@ scripts for log analysis, motor curves and battery sims.
 - [Driving the car (double-track model)](#driving-the-car-double-track-model)
 - [Endurance and DRS](#endurance-and-drs)
 - [VCU controller (sim + car)](#vcu-controller-sim--car)
+- [Car data to collect](#car-data-to-collect)
 - [Visualization](#visualization)
 - [Repo layout](#repo-layout)
 
@@ -199,18 +200,19 @@ The pack discharges and heats (I²R, passive cooling only) and its BMS undervolt
 cuts power as it empties, so a car that uses too much energy slows and stops short.
 
 ```sh
-python -m accel.endurance --out endurance.png              # baseline vs lift-and-coast
-python -m accel.endurance --aero notebook --out drs.png    # with a wing, + DRS
+python -m accel.endurance --out endurance.png
+# wing closed, wing set open by hand, DRS, wing closed + lift-and-coast
 ```
 
 The summary has driving time, lap times, energy, drag energy, final SOC, pack
 temperature and heat, and whether it finished. `PathFollower(coast_time=...)` is
-lift-and-coast (lift when a braking zone is coming). DRS is a model input (wing position
-blending drag, downforce and aero balance between `Car`'s closed and `drs_*_open`
-values) driven by a `DrsPolicy` (open when fast, nearly straight, on the gas, not
-braking; actuator travel time). The `notebook` aero preset takes its drag from
-python-endurance-drag-energy-calculator's calc_drag.ipynb; its downforce numbers are
-placeholders.
+lift-and-coast (lift when a braking zone is coming). `Car()` is the current car with
+its wing closed; `Car().open_aero()` is the wing set open by hand (the accel tooling
+uses that). DRS switches between the two while driving: a model input (wing position
+blending drag, downforce and aero balance) driven by a `DrsPolicy` (open when fast,
+nearly straight, on the gas, not braking; actuator travel time). Aero drag is from
+python-endurance-drag-energy-calculator's calc_drag.ipynb; downforce is a placeholder
+(see below).
 
 ## VCU controller (sim + car)
 
@@ -259,6 +261,37 @@ posts `python -m accel.report_diff base/metrics.json report/metrics.json` as a P
 
 The Rerun viewer sends anonymous usage stats by default (features used, not your data);
 `rerun analytics disable` turns that off.
+
+## Car data to collect
+
+TODO: everything the sim uses that hasn't been measured on the current car. Values in
+`accel/params.py` (`Car`), `accel/powertrain.py` (`Pack`, motor) and `accel/firmware.py`
+(sensors) are marked ESTIMATE / PLACEHOLDER / VERIFY in the code; `accel.report`'s
+"what to measure next" ranks how much each matters for accel time.
+
+- **Aero, wing closed and open:** ClA and aero balance (only drag is ours, from
+  calc_drag.ipynb). The downforce is a placeholder copied from other teams: closed ClA
+  5.0 is our CdA times the L/D (2.4) of a published full-aero FSAE car
+  ([ClA 5.47 / CdA 2.28](https://pidduuu.github.io/jekyll/update/2023/10/01/Justification-for-Aerodynamics.html));
+  open ClA 3.0 applies [Monash's FSAE DRS](https://people.eng.unimelb.edu.au/imarusic/proceedings/19/387.pdf)
+  downforce losses (front wing -37%, rear wing -67%) to a typical wing/undertray split.
+  Coast-down tests in both configs would give CdA; ride height sensors or shock pots
+  under speed give ClA and balance. DRS actuator travel time.
+- **Mass properties:** mass with driver, CG height, weight distribution, yaw inertia,
+  wheel and driveline inertias, motor rotor inertia (EMRAX datasheet, VERIFY).
+- **Geometry:** front/rear track, steering ratio and maximum steering angle,
+  loaded tire radius.
+- **Suspension:** roll stiffness distribution, pitch/roll response times.
+- **Diff:** Drexler preload and ramp angles (locking factors, drive and coast).
+- **Brakes:** bias and maximum brake torque.
+- **Tires:** road grip scale vs the TTC fit (0.6 now), relaxation lengths.
+- **Pack:** COSMX cell open-circuit voltage curve (the repo's is adjusted from LG HE2,
+  not measured), cell mass and heat capacity, pack-to-ambient heat transfer (no
+  cooling), resistance vs temperature, BMS undervoltage limit.
+- **Powertrain:** inverter torque response, driveline efficiency, rolling resistance;
+  whether the car regens (not modeled).
+- **Sensors / CAN:** VectorNav breakout send rates and latency; INS status on CAN; the
+  VCU will need the DRS wing state too (its grip model depends on the downforce).
 
 ## Repo layout
 

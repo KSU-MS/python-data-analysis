@@ -176,12 +176,13 @@ def standard_runs(car: Car = None) -> dict:
     from .powertrain import MotorMap
     from .sim import simulate
 
-    car = car or Car()
+    car = car or Car().open_aero()
     motor = MotorMap("228HV")
     return {
         "no TC": simulate(car, motor),
-        "VCU slip_pi": simulate(car, motor, controller=FirmwareController(mode="slip_pi")),
-        "VCU mu_adaptive": simulate(car, motor, controller=FirmwareController(mode="mu_adaptive")),
+        "VCU slip_pi": simulate(car, motor, controller=FirmwareController(mode="slip_pi", belief=car)),
+        "VCU mu_adaptive": simulate(car, motor, controller=FirmwareController(mode="mu_adaptive",
+                                                                              belief=car)),
     }
 
 
@@ -190,7 +191,7 @@ def main():
     p.add_argument("--save", metavar="RRD", help="write an .rrd instead of opening the viewer")
     p.add_argument("--fd", type=float, default=Car.final_drive)
     args = p.parse_args()
-    car = Car(final_drive=args.fd)
+    car = Car(final_drive=args.fd).open_aero()
     runs = standard_runs(car)
     for name, res in runs.items():
         print(f"{name:18s} {res.accel_time:.3f} s")

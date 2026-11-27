@@ -1,5 +1,11 @@
-"""Vehicle parameters for the accel sim. Defaults are KS6e-ish, carried over from
-accel_weight_transfer.ipynb; anything marked ESTIMATE has not been measured."""
+"""Vehicle parameters. Defaults are the current car where known (KS6e-ish, carried
+over from accel_weight_transfer.ipynb); anything marked ESTIMATE or PLACEHOLDER has
+not been measured. README "Car data to collect" lists everything still to fetch.
+
+TODO(car data): replace the ESTIMATE / PLACEHOLDER values below with the current
+car's (see the README list).
+"""
+import dataclasses
 from dataclasses import dataclass
 
 G = 9.81
@@ -16,9 +22,15 @@ class Car:
     driveline_eff: float = 0.95     # chain + bearings
     motor_eff: float = 0.90         # motor * inverter, battery -> shaft
 
-    cda: float = 0.7                # drag coefficient * frontal area, m^2
-    cla: float = 0.8                # lift coefficient * area, m^2 (positive = downforce)
-    aero_front: float = 0.5         # fraction of downforce on the front axle
+    # Aero, wing CLOSED (full downforce). The wing can be set open by hand
+    # (open_aero()) or switched while driving with DRS (drs_* below, vehicle.py).
+    # Drag: python-endurance-drag-energy-calculator calc_drag.ipynb, Cd 1.815 on
+    # 1.146 m^2. Downforce: PLACEHOLDER, not measured on our car: that drag times the
+    # L/D (2.4) of a published full-aero FSAE car (ClA 5.47 / CdA 2.28,
+    # pidduuu.github.io "Justification for Aerodynamics", 2023). TODO(car data)
+    cda: float = 1.815 * 1.146118   # drag coefficient * frontal area, m^2 (2.08)
+    cla: float = 5.0                # lift coefficient * area, m^2 (positive = downforce)
+    aero_front: float = 0.47        # fraction of downforce on the front axle, PLACEHOLDER
     rho: float = 1.226              # air density, kg/m^3
     crr: float = 0.015              # rolling resistance coefficient, ESTIMATE
 
@@ -56,11 +68,22 @@ class Car:
     brake_bias_front: float = 0.65  # front share of brake torque, ESTIMATE
     max_brake_torque: float = 1500.0  # Nm summed over the wheels at full pedal, ESTIMATE
 
-    # drag reduction system: aero with the wing open. None = same as closed (no DRS).
-    # cda / cla / aero_front above are the closed (normal) wing.
-    drs_cda_open: float | None = None
-    drs_cla_open: float | None = None
-    drs_aero_front_open: float | None = None
+    # Aero with the wing OPEN (DRS, or set open by hand). None = same as closed.
+    # Drag: calc_drag.ipynb, Cd 0.682 on 0.961 m^2. Downforce: PLACEHOLDER from
+    # Monash's FSAE DRS study (front wing -37%, rear wing -67% downforce) applied to
+    # a typical split of the closed ClA (front wing 35%, rear wing 40%, undertray
+    # 25% unchanged): 5.0 * 0.60 = 3.0, balance moving forward. TODO(car data)
+    drs_cda_open: float | None = 0.68167 * 0.9606706   # 0.655
+    drs_cla_open: float | None = 3.0
+    drs_aero_front_open: float | None = 0.57
+
+    def open_aero(self) -> "Car":
+        """The car with its wing set open by hand: the open aero as its only config
+        (e.g. for the accel event, or a static low-drag endurance setup)."""
+        return dataclasses.replace(
+            self, cda=_or(self.drs_cda_open, self.cda), cla=_or(self.drs_cla_open, self.cla),
+            aero_front=_or(self.drs_aero_front_open, self.aero_front),
+            drs_cda_open=None, drs_cla_open=None, drs_aero_front_open=None)
 
     @property
     def cg_to_front(self) -> float:
@@ -79,3 +102,7 @@ class Car:
 
     def drag(self, v: float) -> float:
         return 0.5 * self.rho * self.cda * v * v
+
+
+def _or(value, default):
+    return default if value is None else value

@@ -19,12 +19,17 @@ ROOT = Path(__file__).resolve().parent.parent
 OPTIMUMLAP_CSV = ROOT / "olapsims" / "208mvTestStrip.csv"
 KS5E_DIR = ROOT / "cardata" / "ks5e"
 
+# Light aero these comparisons were validated with (the sim's defaults before Car()
+# became the current car's full wing). ESTIMATE for the KS5e and the OptimumLap car.
+LIGHT_AERO = dict(cda=0.7, cla=0.8, aero_front=0.5, drs_cda_open=None, drs_cla_open=None,
+                  drs_aero_front_open=None)
+
 # matching sim setups: pass as simulate(**OPTIMUMLAP_SETUP)
-OPTIMUMLAP_SETUP = dict(car=Car(final_drive=4.0), motor="208MV", pack="energus300v")
+OPTIMUMLAP_SETUP = dict(car=Car(final_drive=4.0, **LIGHT_AERO), motor="208MV", pack="energus300v")
 # KS5e final drive and mass are ASSUMPTIONS: the old notebook scaled ks5e torque by 3,
 # and integrating rpm at FD 3.0 puts the driver's lift just past 75 m (FD >= ~4 would
 # not reach the finish before the lift)
-KS5E_SETUP = dict(car=Car(final_drive=3.0), motor="228HV", pack="energus250v")
+KS5E_SETUP = dict(car=Car(final_drive=3.0, **LIGHT_AERO), motor="228HV", pack="energus250v")
 
 _KS5E_COLS = {
     "D1_Commanded_Torque": "torque_request",

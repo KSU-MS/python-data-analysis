@@ -6,11 +6,10 @@ temperature and capacity, driving style and drag matter most.
     res.summary        # time, energy, SOC, pack temperature, drag energy, lap times
     res.df             # the whole run, both stints
 
-    python -m accel.endurance --out endurance.png             # baseline vs lift-and-coast
-    python -m accel.endurance --aero notebook --out drs.png   # + DRS, aero from calc_drag.ipynb
+    python -m accel.endurance --out endurance.png
+        # wing closed, wing set open by hand, DRS, lift-and-coast
 """
 import argparse
-import dataclasses
 import math
 from dataclasses import dataclass
 
@@ -25,15 +24,6 @@ from .powertrain import PACKS, Pack
 from .track import michigan_2026_endurance
 
 DRIVER_CHANGE_S = 180.0
-
-# Aero packages. "notebook": the wing from python-endurance-drag-energy-calculator
-# (calc_drag.ipynb: Cd 1.815 on 1.146 m^2 closed, 0.682 on 0.961 m^2 open). Its
-# downforce wasn't in that notebook: the ClA values and balances here are
-# PLACEHOLDERS (typical FSAE full aero, rear wing flattened open), not measured.
-AERO_PRESETS = {
-    "notebook": dict(cda=1.815 * 1.146118, cla=3.5, aero_front=0.45,
-                     drs_cda_open=0.68167 * 0.9606706, drs_cla_open=1.8, drs_aero_front_open=0.7),
-}
 
 
 @dataclass
@@ -107,28 +97,30 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--laps", type=int, default=18)
     ap.add_argument("--margin", type=float, default=0.8)
-    ap.add_argument("--aero", choices=["car", *AERO_PRESETS], default="car",
-                    help="car: Car() as is (no DRS); a preset adds the wing and a DRS run")
     ap.add_argument("--out", default="endurance.png")
     args = ap.parse_args()
 
-    car = Car() if args.aero == "car" else dataclasses.replace(Car(), **AERO_PRESETS[args.aero])
+    car, open_car = Car(), Car().open_aero()
     path = michigan_2026_endurance()
+    # each aero setup drives to its own envelope; DRS closes for corners, so the
+    # closed wing's
     speed = speed_profile(path, gg_envelope(car), margin=args.margin)
+    speed_open = speed_profile(path, gg_envelope(open_car), margin=args.margin)
+    common = dict(laps=args.laps, path=path)
     runs = {
-        "baseline": endurance(car, laps=args.laps, speed=speed, path=path, label="baseline"),
-        "lift and coast 1 s": endurance(car, laps=args.laps, speed=speed, path=path, coast_time=1.0,
-                                        label="lift and coast"),
+        "wing closed": endurance(car, speed=speed, label="wing closed", **common),
+        "wing open (set by hand)": endurance(open_car, speed=speed_open, label="wing open", **common),
+        "DRS": endurance(car, speed=speed, drs=DrsPolicy(), label="DRS", **common),
+        "wing closed, lift and coast 1 s": endurance(car, speed=speed, coast_time=1.0,
+                                                     label="closed, coast", **common),
     }
-    if args.aero != "car":
-        runs["DRS"] = endurance(car, laps=args.laps, speed=speed, path=path, drs=DrsPolicy(), label="DRS")
 
     table = pd.DataFrame([r.summary for r in runs.values()]).set_index("label")
     with pd.option_context("display.width", 200, "display.max_columns", 20):
         print(table.round(3).T)
 
     fig, axes = plt.subplots(2, 2, figsize=(13, 8))
-    for (name, r), c in zip(runs.items(), ["#468ce6", "#5abe6e", "#e6504a"]):
+    for (name, r), c in zip(runs.items(), ["#468ce6", "#e6aa32", "#e6504a", "#5abe6e"]):
         d = r.df
         axes[0, 0].plot(d.t_event / 60, d.pack_temp, color=c, label=name)
         axes[0, 1].plot(d.t_event / 60, 100 * d.soc, color=c)
@@ -142,8 +134,7 @@ def main():
                                              ("lap times", "lap", "s"), ("lap 1 line", "m", "m")]):
         ax.set(title=title, xlabel=x, ylabel=y)
         ax.grid(alpha=0.3)
-    fig.suptitle(f"FSAE Michigan 2026 EV endurance, {args.laps} laps at {args.margin:.0%} of the grip envelope"
-                 + ("" if args.aero == "car" else f", aero: {args.aero}"))
+    fig.suptitle(f"FSAE Michigan 2026 EV endurance, {args.laps} laps at {args.margin:.0%} of the grip envelope")
     fig.tight_layout()
     fig.savefig(args.out)
 

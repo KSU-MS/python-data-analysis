@@ -7,10 +7,9 @@ import pytest
 from accel import Car
 from accel.drive import drive
 from accel.driver import DrsPolicy, ScriptedDriver
-from accel.endurance import AERO_PRESETS, endurance
+from accel.endurance import endurance
 from accel.powertrain import PACKS, Pack
 from accel.track import michigan_2026_endurance
-import dataclasses
 
 
 @pytest.fixture(scope="module")
@@ -28,7 +27,7 @@ def test_michigan_line(track):
 
 
 def test_drs_cuts_drag_and_downforce():
-    car = dataclasses.replace(Car(), **AERO_PRESETS["notebook"])
+    car = Car()
     cruise = lambda: ScriptedDriver(pedal=lambda t: 0.5)
     closed = drive(cruise(), car, vx0=20.0, t_max=1.0).df.iloc[-1]
     opened = drive(cruise(), car, vx0=20.0, t_max=1.0, drs=DrsPolicy(min_speed=5)).df.iloc[-1]
