@@ -23,6 +23,7 @@ import dataclasses
 import json
 import math
 import tempfile
+import textwrap
 import time
 from pathlib import Path
 
@@ -43,8 +44,41 @@ from kmslap.vcu.sysid import fit_plant  # noqa: E402
 from kmslap.car.tire import default_tire  # noqa: E402
 from kmslap.vcu.uncertainty import ABSOLUTE, RANGES, monte_carlo, sample_plants  # noqa: E402
 
-COLORS = ["#e6504a", "#468ce6", "#5abe6e", "#e6aa32"]
-plt.rcParams.update({"figure.dpi": 100, "axes.grid": True, "grid.alpha": 0.3})
+# One plot style for every figure in the report. Categorical colors in a fixed order
+# (blue, orange, aqua, yellow; checked for colorblind separation), ink and hairline
+# greys for text, truth/reference lines and the grid.
+COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+INK, INK2, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
+# a run keeps its color in every plot (and the GIF); anything else takes the next free one
+RUN_COLORS = {"VCU mu_adaptive": COLORS[0], "VCU": COLORS[0], "no TC": COLORS[1],
+              "VCU slip_pi": COLORS[2], "VCU, no ratio check": COLORS[2]}
+plt.rcParams.update({
+    "figure.dpi": 100, "savefig.dpi": 150, "figure.facecolor": "white",
+    "font.size": 10, "axes.titlesize": 10.5, "axes.titleweight": "bold", "axes.titlelocation": "left",
+    "axes.titlecolor": INK, "axes.labelsize": 10, "axes.labelcolor": INK2,
+    "xtick.labelsize": 9, "ytick.labelsize": 9, "xtick.color": INK2, "ytick.color": INK2,
+    "axes.edgecolor": AXIS, "axes.linewidth": 0.8, "axes.spines.top": False, "axes.spines.right": False,
+    "axes.prop_cycle": plt.cycler(color=COLORS), "axes.grid": True, "grid.color": GRID,
+    "grid.linewidth": 0.6, "axes.axisbelow": True, "lines.linewidth": 1.8,
+    "legend.fontsize": 9, "legend.frameon": False,
+})
+
+
+def _color(name, i=0):
+    return RUN_COLORS.get(name, COLORS[i % len(COLORS)])
+
+
+def _finish(fig, path, title, caption):
+    """Title and a short "what to read from it" caption above the axes, then save."""
+    w, h = fig.get_size_inches()
+    caption = textwrap.fill(caption, width=int(w * 13.5))
+    lines = caption.count("\n") + 1
+    fig.text(0.012, 1 - 0.12 / h, title, ha="left", va="top", fontsize=13, fontweight="bold", color=INK)
+    fig.text(0.012, 1 - 0.42 / h, caption, ha="left", va="top", fontsize=9.5, color=INK2,
+             linespacing=1.35)
+    fig.tight_layout(rect=(0, 0, 1, 1 - (0.5 + 0.19 * lines) / h))
+    fig.savefig(path)
+    plt.close(fig)
 
 
 def _slip_color(slip):
@@ -92,7 +126,7 @@ def drag_race_gif(runs: dict, car: Car, path, fps: int = 20, width_px: int = 960
     cars, wheels, labels = {}, {}, {}
     for i, n in enumerate(names):
         y = lane_h * (len(names) - 1 - i)
-        body = Rectangle((0, y - car_w / 2), car_len, car_w, color=COLORS[i % 4], zorder=3)
+        body = Rectangle((0, y - car_w / 2), car_len, car_w, color=_color(n, i), zorder=3)
         track.add_patch(body)
         # markers (sized in points) so wheels stay round on the unequal-scale axes
         rear = track.plot([], [], "o", ms=10, mec="k", zorder=4)[0]
@@ -102,11 +136,11 @@ def drag_race_gif(runs: dict, car: Car, path, fps: int = 20, width_px: int = 960
 
     lines = {}
     for i, n in enumerate(names):
-        c = COLORS[i % 4]
+        c = _color(n, i)
         lines[n] = (speed.plot([], [], color=c, label=n)[0], slip_ax.plot([], [], color=c)[0])
     speed.set(xlim=(0, t_end), ylim=(0, max(d["v"].max() for d in data.values()) * 3.6 * 1.08),
               xlabel="time (s)", ylabel="speed (km/h)")
-    slip_ax.set(xlim=(0, 1.5), ylim=(-0.05, 0.6), xlabel="time (s)", ylabel="rear slip (first 1.5 s)")
+    slip_ax.set(xlim=(0, 1.5), ylim=(-0.05, 0.6), xlabel="time (s)", ylabel="rear slip ratio (first 1.5 s)")
     speed.legend(fontsize=8, loc="lower right")
     cursor = [ax.axvline(0, color="k", lw=0.8) for ax in (speed, slip_ax)]
     title = fig.suptitle("")
@@ -140,20 +174,21 @@ def drag_race_gif(runs: dict, car: Car, path, fps: int = 20, width_px: int = 960
 
 
 def _fig_launch(runs, path):
-    fig, axes = plt.subplots(3, 1, figsize=(9, 8), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(9, 8.5), sharex=True)
     for i, (n, r) in enumerate(runs.items()):
         d = r.df.query("t < 1.0")
-        axes[0].plot(d.t, d.motor_torque, color=COLORS[i % 4], label=n)
-        axes[1].plot(d.t, d.slip.clip(-0.1, 1.0), color=COLORS[i % 4])
-        axes[2].plot(d.t, d.a / G, color=COLORS[i % 4])
-    for ax, y in zip(axes, ["motor torque (Nm)", "rear slip", "accel (g)"]):
+        axes[0].plot(d.t, d.motor_torque, color=_color(n, i), label=n)
+        axes[1].plot(d.t, d.slip.clip(-0.1, 1.0), color=_color(n, i))
+        axes[2].plot(d.t, d.a / G, color=_color(n, i))
+    for ax, title, y in zip(axes, ["Torque command", "Rear wheel slip", "Longitudinal acceleration"],
+                            ["motor torque (Nm)", "slip ratio (-)", "accel (g)"]):
+        ax.set_title(title)
         ax.set_ylabel(y)
-    axes[0].legend()
-    axes[-1].set_xlabel("time (s)")
-    fig.suptitle("Launch: first second")
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+    axes[0].legend(loc="lower right", ncols=len(runs))
+    axes[-1].set_xlabel("time since launch (s)")
+    _finish(fig, path, "Launch: the first second",
+            "Traction control trims torque so rear slip settles to a small value instead of running "
+            "away into wheelspin (no TC, clipped at 1); holding more g here is most of the 75 m time.")
 
 
 def _fd_sweep(car, motor, fds):
@@ -168,89 +203,107 @@ def _fd_sweep(car, motor, fds):
     return np.array(rows)
 
 
-def _fig_fd(sweep, path):
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    for j, (label, c) in enumerate([("ideal TC", "k"), ("no TC", COLORS[0]),
-                                    ("VCU mu_adaptive", COLORS[1])], start=1):
-        ax.plot(sweep[:, 0], sweep[:, j], "o-", color=c, label=label)
-    ax.set(xlabel="final drive", ylabel="accel time (s)", title="Accel time vs final drive")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+def _fig_fd(sweep, current_fd, path):
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sweep = np.where(np.isfinite(sweep), sweep, np.nan)   # a run that didn't finish: a gap
+    for j, (label, c) in enumerate([("ideal TC (quasi-static)", INK), ("no TC", _color("no TC")),
+                                    ("VCU mu_adaptive", _color("VCU mu_adaptive"))], start=1):
+        ax.plot(sweep[:, 0], sweep[:, j], "o-", color=c, ms=6, label=label,
+                ls="--" if j == 1 else "-", lw=1.4 if j == 1 else 1.8)
+    ax.axvline(current_fd, color=MUTED, lw=1, zorder=0)
+    ax.annotate(f"current car (FD {current_fd:g})", (current_fd, 1), xycoords=("data", "axes fraction"),
+                xytext=(4, -4), textcoords="offset points", va="top", fontsize=8.5, color=INK2)
+    ax.set(xlabel="final drive ratio (motor rev / wheel rev)", ylabel="75 m accel time (s)")
+    ax.margins(y=0.12)
+    ax.legend(loc="center right")
+    _finish(fig, path, "Accel time vs final drive",
+            "Lower is faster. The dashed ideal-TC line is the best any controller could do at each "
+            "ratio; the gap from VCU to ideal is what traction control still leaves on the table.")
 
 
 def _fig_robustness(mc, cols, path):
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    bins = np.linspace(0, max(mc[cols].max().max(), 1) * 1.05, 40)
+    fig, ax = plt.subplots(figsize=(8, 1.6 + 0.9 * len(cols)))
+    rng = np.random.default_rng(0)   # vertical jitter only, so dots don't stack
     for i, c in enumerate(cols):
-        ax.hist(mc[c], bins=bins, alpha=0.6, color=COLORS[i % 4], label=c)
-    ax.set(xlabel="% over the plant's ideal time", ylabel="plants",
-           title=f"{len(mc)} plants, every coefficient off, controllers at nominal")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+        y = len(cols) - 1 - i
+        ax.scatter(mc[c], y + rng.uniform(-0.18, 0.18, len(mc)), s=30, color=_color(c, i),
+                   alpha=0.75, edgecolors="white", linewidths=0.8, zorder=3)
+        mean = mc[c].mean()
+        ax.plot([mean, mean], [y - 0.32, y + 0.32], color=INK, lw=2, zorder=4)
+        ax.annotate(f"mean {mean:+.1f}%", (mean, y + 0.32), xytext=(0, 2), textcoords="offset points",
+                    ha="center", va="bottom", fontsize=8.5, color=INK2)
+    ax.set_yticks(range(len(cols)), cols[::-1])
+    ax.set_ylim(-0.6, len(cols) - 0.25)
+    ax.grid(axis="y", visible=False)
+    ax.set_xlim(left=min(0, mc[cols].min().min()) - 0.2)
+    ax.set_xlabel("75 m time over that car's ideal-TC time (%)")
+    _finish(fig, path, f"Robustness: {len(mc)} cars with every coefficient wrong",
+            "Each dot is one randomly perturbed car (grip, mass, sensors...) driven by a controller "
+            "tuned for the nominal car; the black tick is the mean. Good: dots bunched near 0%.")
 
 
 def _fig_controller(run, path):
     d, log = run.df.query("t < 2"), run.controller_log.query("0 <= t < 2")
-    fig, axes = plt.subplots(3, 1, figsize=(9, 8), sharex=True)
-    axes[0].plot(d.t, d.v, "k", label="true speed")
-    axes[0].plot(log.t, log.v_est, color=COLORS[1], label="v_est (VectorNav + wheels)")
-    axes[0].plot(log.t, log.omega_fl * Car.tire_radius, color=COLORS[3], label="front wheel sensor")
-    axes[1].plot(d.t, d.slip.clip(-0.3, 1), "k", label="true slip")
-    axes[1].plot(log.t, log.slip.clip(-0.3, 1), color=COLORS[1], label="measured slip")
-    axes[2].plot(d.t, d.motor_torque, "k", label="motor torque")
+    fig, axes = plt.subplots(3, 1, figsize=(9, 8.5), sharex=True)
+    axes[0].plot(d.t, d.v, color=INK, label="true speed")
+    axes[0].plot(log.t, log.v_est, color=COLORS[0], label="v_est (VectorNav + wheels)")
+    axes[0].plot(log.t, log.omega_fl * Car.tire_radius, color=COLORS[1], lw=1.2, label="front wheel sensor")
+    axes[1].plot(d.t, d.slip.clip(-0.3, 1), color=INK, label="true slip")
+    axes[1].plot(log.t, log.slip.clip(-0.3, 1), color=COLORS[0], label="measured slip")
+    axes[2].plot(d.t, d.motor_torque, color=INK, label="motor torque")
     axes[2].plot(log.t, log.torque_ff, color=COLORS[2], label="map torque from learned mu")
-    for ax, y in zip(axes, ["m/s", "slip", "Nm"]):
+    for ax, title, y in zip(axes, ["Vehicle speed", "Rear wheel slip", "Torque"],
+                            ["speed (m/s)", "slip ratio (-)", "torque (Nm)"]):
+        ax.set_title(title)
         ax.set_ylabel(y)
-        ax.legend(fontsize=8)
-    axes[-1].set_xlabel("time (s)")
-    fig.suptitle("What the VCU controller saw vs the truth (mu_adaptive)")
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+        ax.legend(loc="best")
+    axes[-1].set_xlabel("time since launch (s)")
+    _finish(fig, path, "What the VCU saw vs the truth (mu_adaptive)",
+            "Black is the simulated truth, color is the controller's own estimate from its sensors. "
+            "Good: the estimates track the black lines closely and settle quickly after launch.")
 
 
 def _fig_sysid(fit, path):
     s = fit.signals
-    fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.plot(s.t, s.fx_meas, color="0.6", lw=1, label="rear tire force from measured accel")
-    ax.plot(s.t, s.fx_model, color=COLORS[1], label="fitted tire model")
-    ax.set(xlabel="time (s)", ylabel="Fx (N)", xlim=(0, 1.5),
-           title="System ID: tire force, measured vs fitted (first 1.5 s)")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    ax.plot(s.t, s.fx_meas, color=MUTED, lw=1, label="from measured accel (noisy)")
+    ax.plot(s.t, s.fx_model, color=COLORS[0], label="fitted tire model")
+    ax.set(xlabel="time since launch (s)", ylabel="rear tire force Fx (N)", xlim=(0, 1.5))
+    ax.legend(loc="lower right")
+    _finish(fig, path, "System ID: rear tire force, measured vs fitted",
+            "Tire force backed out of a logged run on a hidden car (grey) and the model fitted to "
+            "that log (blue). Good: blue runs through the middle of the grey, including the peak.")
 
 
 def _fig_gear_ratio(runs, true_fd, belief_fd, path):
-    fig, axes = plt.subplots(2, 1, figsize=(9, 6.5), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(9, 7), sharex=True)
     for i, (n, r) in enumerate(runs.items()):
         d = r.df.query("t < 4")
-        axes[0].plot(d.t, d.v, color=COLORS[i], label=n)
+        axes[0].plot(d.t, d.v, color=_color(n, i), label=n)
         if r.controller_log is None:
             continue
         log = r.controller_log.query("0 <= t < 4")
         m = log[log.gear_ratio > 0]
-        axes[1].step(m.t, m.gear_ratio, where="post", color=COLORS[i])
+        axes[1].step(m.t, m.gear_ratio, where="post", color=_color(n, i), label=n)
         f = log[log.faults > 0]
         if len(f):
             for ax in axes:
-                ax.axvline(f.t.iloc[0], color=COLORS[i], ls=":")
-    axes[1].axhline(belief_fd, color="k", lw=1, label=f"configured FD {belief_fd:g}")
-    axes[1].axhline(true_fd, color="0.5", lw=1, ls="--", label=f"actual FD {true_fd:g}")
+                ax.axvline(f.t.iloc[0], color=_color(n, i), ls=":", lw=1.4)
+            axes[0].annotate("fault latched, TC off", (f.t.iloc[0], 0), xycoords=("data", "axes fraction"),
+                             xytext=(4, 4), textcoords="offset points", fontsize=8.5, color=INK2)
+    axes[1].axhline(belief_fd, color=INK, lw=1, label=f"configured FD {belief_fd:g}")
+    axes[1].axhline(true_fd, color=MUTED, lw=1, ls="--", label=f"actual FD {true_fd:g}")
+    axes[0].set_title("Vehicle speed")
+    axes[1].set_title("Gear ratio the VCU measures (wheel teeth vs motor revs)")
     axes[0].set_ylabel("speed (m/s)")
-    axes[1].set_ylabel("measured gear ratio")
-    axes[0].legend(fontsize=8)
-    axes[1].legend(fontsize=8)
-    axes[-1].set_xlabel("time (s)  (dotted: fault latched, TC off)")
-    fig.suptitle(f"VCU configured for FD {belief_fd:g} on a car geared {true_fd:g}")
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+    axes[1].set_ylabel("ratio (motor rev / wheel rev)")
+    axes[0].legend(loc="upper left")
+    axes[1].legend(loc="best", ncols=2)
+    axes[-1].set_xlabel("time since launch (s)")
+    _finish(fig, path, f"Plausibility check: VCU set up for FD {belief_fd:g}, car geared {true_fd:g}",
+            "With the wrong ratio the controller's slip estimate is garbage and it chokes the torque. "
+            "Good: the measured ratio disagrees early, the fault (dotted line) latches, and the car "
+            "accelerates again; without the check it never recovers.")
 
 
 def _sensitivity(car, motor):
@@ -271,14 +324,18 @@ def _sensitivity(car, motor):
 
 
 def _fig_sensitivity(rows, path):
-    fig, ax = plt.subplots(figsize=(8, 4.5))
+    fig, ax = plt.subplots(figsize=(8, 1.8 + 0.38 * len(rows)))
     names = [r[0] for r in rows][::-1]
-    ax.barh(names, [r[4] * 1000 for r in rows][::-1], color=COLORS[1])
-    ax.set(xlabel="ms of accel time across the coefficient's uncertainty range",
-           title="What to measure: driver launch, no TC")
-    fig.tight_layout()
-    fig.savefig(path)
-    plt.close(fig)
+    ms = [r[4] * 1000 for r in rows][::-1]
+    bars = ax.barh(names, ms, height=0.62, color=COLORS[0])
+    ax.bar_label(bars, fmt="%.1f", padding=3, fontsize=8.5, color=INK2)
+    ax.grid(axis="y", visible=False)
+    ax.tick_params(axis="y", length=0)
+    ax.set_xlim(0, max(ms + [1]) * 1.12)
+    ax.set_xlabel("spread in 75 m time across the coefficient's uncertainty range (ms)")
+    _finish(fig, path, "What to measure next: driver launch, no TC",
+            "How much accel time each uncertain coefficient could swing, from exact gradients "
+            "through the CasADi model. The longest bars are the measurements worth making first.")
 
 
 def _mermaid_lines(title, x, series, y_label):
@@ -295,6 +352,13 @@ def _mermaid_lines(title, x, series, y_label):
     return out
 
 
+def _mermaid_bars(title, labels, values, y_label):
+    names = ", ".join(f'"{v}"' for v in labels)
+    return ["```mermaid", "xychart-beta", f'  title "{title}"', f"  x-axis [{names}]",
+            f'  y-axis "{y_label}" 0 --> {max(values + [1]) * 1.1:.1f}',
+            f"  bar [{', '.join(f'{v:.1f}' for v in values)}]", "```"]
+
+
 def run(out: str = "report", plants: int = 20):
     """Write the report into `out`; plants: Monte Carlo plants."""
     out = Path(out)
@@ -302,7 +366,13 @@ def run(out: str = "report", plants: int = 20):
     t0 = time.perf_counter()
     # accel: wing set open (lowest drag), and the controller configured to match
     car, motor = Car().open_aero(), MotorMap("228HV")
-    md = ["# Accel sim report", ""]
+    md = ["# Accel sim report", "",
+          "Deterministic sims of the 75 m acceleration event with the VCU's C++ traction control "
+          "in the loop, run on every push. Lower times are better throughout; on pull requests "
+          "the run summary also compares these numbers against the base branch.", "",
+          "> Plots (`*.png`) and the drag race animation (`drag_race.gif`) are in the "
+          "**`accel-report`** artifact at the bottom of this run's page; the job summary can't "
+          "show images inline. Each section below names the plot that goes with it.", ""]
     metrics = {}
 
     def metric(key, value, unit, better="lower"):
@@ -317,30 +387,48 @@ def run(out: str = "report", plants: int = 20):
         "VCU mu_adaptive": simulate(car, motor, controller=FirmwareController(mode="mu_adaptive",
                                                                               belief=car)),
     }
-    md += [f"Current car: EMRAX 228HV, COSMX 144s1p, FD {car.final_drive:g}, LC0 tire. "
-           "Download the `accel-report` artifact for `drag_race.gif` and the plots.", "",
-           "| run | 75 m time | vs ideal | trap speed | peak slip |", "|---|---|---|---|---|",
-           f"| ideal TC (quasi-static) | {ideal.accel_time:.3f} s | | "
-           f"{ideal.df.v.iloc[-1] * 3.6:.1f} km/h | |"]
+    md += ["## Headline: 75 m accel", "",
+           f"Current car: EMRAX 228HV, COSMX 144s1p, FD {car.final_drive:g}, LC0 tire, wing open. "
+           "Ideal TC is a quasi-static bound (perfect traction control: the tire at its peak "
+           "every instant); the other rows are full sims. Good: VCU rows within a percent or "
+           "two of ideal, and peak slip ratio far below the wheelspin no TC shows.", "",
+           "| run | 75 m time (s) | vs ideal (%) | trap speed (km/h) | peak slip ratio (-) |",
+           "|---|--:|--:|--:|--:|",
+           f"| ideal TC (quasi-static) | {ideal.accel_time:.3f} | | "
+           f"{ideal.df.v.iloc[-1] * 3.6:.1f} | |"]
     metric("accel time: ideal TC", ideal.accel_time, "s")
     for n, r in runs.items():
         s = r.summary()
         metric(f"accel time: {n}", r.accel_time, "s")
         metric(f"peak slip: {n}", s["max_slip"], "")
-        md.append(f"| {n} | {r.accel_time:.3f} s | {100 * (r.accel_time / ideal.accel_time - 1):+.2f}% | "
-                  f"{s['trap_kmh']:.1f} km/h | {s['max_slip']:.2f} |")
+        md.append(f"| {n} | {r.accel_time:.3f} | {100 * (r.accel_time / ideal.accel_time - 1):+.2f} | "
+                  f"{s['trap_kmh']:.1f} | {s['max_slip']:.2f} |")
+    md += ["", "Plots: `launch.png` (torque, slip and g over the first second), "
+               "`controller_view.png` (the VCU's estimates vs the truth), `drag_race.gif`."]
     drag_race_gif(runs, car, out / "drag_race.gif")
     _fig_launch(runs, out / "launch.png")
     _fig_controller(runs["VCU mu_adaptive"], out / "controller_view.png")
 
     # final drive sweep
     sweep = _fd_sweep(car, motor, [2.4, 2.7, 3.0, 3.5, 4.0, 4.5, 5.0])
-    _fig_fd(sweep, out / "fd_sweep.png")
+    _fig_fd(sweep, car.final_drive, out / "fd_sweep.png")
     for fd, *_, vcu_time in sweep:
         metric(f"accel time: VCU mu_adaptive, FD {fd:g}", vcu_time, "s")
-    md += ["", "## Final drive", "", "Lines, top to bottom at FD 2.7: no TC, VCU mu_adaptive, ideal TC.", ""]
-    md += _mermaid_lines("Accel time (s) vs final drive", sweep[:, 0],
-                         {"no TC": sweep[:, 2], "VCU": sweep[:, 3], "ideal": sweep[:, 1]}, "s")
+    series = {"no TC": sweep[:, 2], "VCU mu_adaptive": sweep[:, 3], "ideal TC": sweep[:, 1]}
+    # Mermaid charts have no legend: name the lines in the order they sit at the current ratio
+    k = int(np.argmin(abs(sweep[:, 0] - car.final_drive)))
+    order = sorted(series, key=lambda n: -series[n][k] if np.isfinite(series[n][k]) else -math.inf)
+    md += ["", "## Final drive", "",
+           "75 m time for each final drive ratio, with the VCU configured for the ratio it's run "
+           "at. A higher ratio launches harder but hits the motor's speed limit sooner. Good: "
+           "the VCU line hugging ideal TC, and the current ratio near the bottom of the curve.", "",
+           f"Lines, top to bottom at FD {sweep[k, 0]:g}: {', '.join(order)}. Plot: `fd_sweep.png`.", ""]
+    md += _mermaid_lines("75 m time (s) vs final drive ratio", sweep[:, 0], series, "time (s)")
+    md += ["", "<details><summary>Final drive sweep as a table</summary>", "",
+           "| final drive | ideal TC (s) | no TC (s) | VCU mu_adaptive (s) |", "|--:|--:|--:|--:|"]
+    md += [f"| {fd:g} | " + " | ".join(f"{v:.3f}" if np.isfinite(v) else "didn't finish" for v in row) + " |"
+           for fd, *row in sweep]
+    md += ["", "</details>"]
 
     # robustness
     fw = lambda mode: (lambda pl: dict(controller=FirmwareController(
@@ -350,9 +438,14 @@ def run(out: str = "report", plants: int = 20):
     cols = list(strategies)
     _fig_robustness(mc, cols, out / "robustness.png")
     md += ["", f"## Robustness ({plants} plants, every coefficient off)", "",
-           "| controller | mean | p90 | worst |", "|---|---|---|---|"]
+           f'{plants} random cars ("plants"), each with grip, mass, inertias, aero, sensor bias and '
+           "the rest drawn from their uncertainty ranges, driven by controllers tuned for the "
+           "nominal car. Numbers are % slower than that car's own ideal-TC time. Good: small mean "
+           "and, more importantly, a small worst case. Plot: `robustness.png`.", "",
+           "| controller | mean (% over ideal) | p90 (% over ideal) | worst (% over ideal) |",
+           "|---|--:|--:|--:|"]
     for c in cols:
-        md.append(f"| {c} | {mc[c].mean():+.2f}% | {mc[c].quantile(0.9):+.2f}% | {mc[c].max():+.2f}% |")
+        md.append(f"| {c} | {mc[c].mean():+.2f} | {mc[c].quantile(0.9):+.2f} | {mc[c].max():+.2f} |")
         metric(f"robustness mean: {c}", mc[c].mean(), "% over ideal")
         metric(f"robustness worst: {c}", mc[c].max(), "% over ideal")
 
@@ -370,12 +463,16 @@ def run(out: str = "report", plants: int = 20):
     faulted = log[(log.faults & FAULTS["gear_ratio"]) > 0]
     d = ratio_runs["VCU"].df
     fault_x = d.x[d.t <= faulted.t.iloc[0]].iloc[-1] if len(faulted) else math.inf
-    fmt = lambda r: f"{r.accel_time:.3f} s" if np.isfinite(r.accel_time) else "didn't finish"
+    fmt = lambda r: f"{r.accel_time:.3f}" if np.isfinite(r.accel_time) else "didn't finish"
     md += ["", f"## Plausibility: VCU set up for FD {belief_fd:g}, car geared {true_fd:g}", "",
            "The controller counts rear wheel sensor teeth against motor revs; when the ratio "
            "disagrees with its configured final drive it latches a fault and passes the "
-           "driver's torque straight through.", "",
-           "| run | 75 m time |", "|---|---|"]
+           "driver's torque straight through. Here it's deliberately misconfigured. Good: the "
+           "fault latches within the first few metres so the VCU run still finishes (slower than "
+           "no TC, having fought a wrong slip estimate until then), while the unchecked controller "
+           "is much slower or doesn't finish. "
+           "Plot: `gear_ratio_check.png`.", "",
+           "| run | 75 m time (s) |", "|---|--:|"]
     md += [f"| {n} | {fmt(r)} |" for n, r in ratio_runs.items()]
     md += ["", f"Fault latched after **{fault_x:.1f} m** (measured ratio "
                f"{log.gear_ratio[log.gear_ratio > 0].iloc[-1]:.2f})." if len(faulted)
@@ -389,12 +486,15 @@ def run(out: str = "report", plants: int = 20):
     md += ["", "## What to measure next", "",
            f"Driver launch with no TC ({t_open:.3f} s): exact d(accel time)/d(coefficient) "
            "through the CasADi model, times each coefficient's uncertainty range "
-           "(`uncertainty.RANGES`). Biggest first: the ones worth measuring.", "",
-           "| coefficient | nominal | range | d time / d coeff | across range |",
-           "|---|---|---|---|---|"]
+           "(`uncertainty.RANGES`). Biggest first: the ones worth measuring, since pinning them "
+           "down shrinks the model's error bars the most. Plot: `sensitivity.png`.", ""]
+    md += _mermaid_bars("Spread in 75 m time across each range (ms)", [r[0] for r in sens],
+                        [1000 * r[4] for r in sens], "ms")
+    md += ["", "| coefficient | nominal | range | d time / d coeff (s per unit) | across range (ms) |",
+           "|---|--:|---|--:|--:|"]
     for k, nom, (lo, hi), g, spread in sens:
         rng = f"{lo:g} to {hi:g}" + ("" if k in ABSOLUTE else " x nominal")
-        md.append(f"| {k} | {nom:.4g} | {rng} | {g:+.4g} s/unit | {1000 * spread:.1f} ms |")
+        md.append(f"| {k} | {nom:.4g} | {rng} | {g:+.4g} | {1000 * spread:.1f} |")
         metric(f"sensitivity across range: {k}", 1000 * spread, "ms", better="neither")
 
     # log -> replay -> fit loop on a hidden car
@@ -410,16 +510,23 @@ def run(out: str = "report", plants: int = 20):
     _fig_sysid(fit, out / "sysid.png")
     narrowed = fit.ranges(RANGES)
     md += ["", "## Log replay and system ID (hidden car)", "",
+           "A run on a randomly drawn car is logged in the VCU's binary format, replayed through "
+           "the controller (it must reproduce every torque command bit for bit), then fitted to "
+           "recover the car. Good: **identical** replay, fit close to truth, and the narrowed "
+           "range well inside the prior. Plot: `sysid.png`.", "",
            f"Binary log ({len(inputs)} records) replayed through the controller: "
            f"**{'identical' if identical else 'DIFFERENT'}** torque commands.", "",
-           "| coefficient | truth | fit | prior range | narrowed |", "|---|---|---|---|---|"]
+           "| coefficient | unit | truth | fit | error (%) | prior range | narrowed |",
+           "|---|---|--:|--:|--:|---|---|"]
     for k in ("grip", "mass", "tire_radius", "relaxation_length"):
         lo, hi = narrowed[k]
-        md.append(f"| {k} | {real.draw[k]:.4f} | {fit.params[k]:.4f} | "
+        unit = "m" if k == "relaxation_length" else "x nominal"
+        md.append(f"| {k} | {unit} | {real.draw[k]:.4f} | {fit.params[k]:.4f} | "
+                  f"{100 * abs(fit.params[k] / real.draw[k] - 1):.2f} | "
                   f"{RANGES[k][0]:g} to {RANGES[k][1]:g} | {lo:.4f} to {hi:.4f} |")
         metric(f"sysid error: {k}", 100 * abs(fit.params[k] / real.draw[k] - 1), "%")
 
-    md += ["", f"_Generated in {time.perf_counter() - t0:.0f} s._", ""]
+    md += ["", f"_Generated in {time.perf_counter() - t0:.0f} s; headline numbers in `metrics.json`._", ""]
     metric("log replay identical", float(identical), "", better="higher")
     (out / "summary.md").write_text("\n".join(md))
     (out / "metrics.json").write_text(json.dumps(metrics, indent=1))

@@ -49,6 +49,11 @@ class Tire(str, Enum):
     curve = "curve"
 
 
+class TrackName(str, Enum):
+    michigan2026 = "michigan2026"
+    ac18 = "ac18"
+
+
 class Bench(str, Enum):
     single = "single"
     parallel = "parallel"
@@ -112,6 +117,13 @@ def report_diff(base: str, head: str, artifact_url: Optional[str] = None):
     run(base, head, artifact_url)
 
 
+@app.command("junit-summary")
+def junit_summary(xml: str, artifact_url: Optional[str] = None):
+    """pytest's --junitxml results as a markdown table (the CI job summary)."""
+    from kmslap.reporting.junit_summary import run
+    run(xml, artifact_url)
+
+
 @app.command()
 def viz(save: Annotated[Optional[str], typer.Option(help="write this .rrd instead of opening the viewer")] = None,
         fd: float = 3.0):
@@ -133,6 +145,51 @@ def endurance(laps: int = 18, margin: Annotated[float, typer.Option(help="fracti
     """Endurance event: wing closed / open / DRS / lift-and-coast compared."""
     from kmslap.events.endurance import compare
     compare(laps, margin, out)
+
+
+@app.command()
+def laptime(track: Annotated[TrackName, typer.Argument(help="michigan2026: the traced 2026 line, 4.5 m wide; "
+                                                             "ac18: the Assetto Corsa cone course")] = TrackName.michigan2026,
+            grip: Annotated[float, typer.Option(help="fraction of the tires' grip the plan uses")] = 0.85,
+            margin: Annotated[float, typer.Option(help="m kept between the car's side and the edge / cones")] = 0.15,
+            step: Annotated[float, typer.Option(help="m between the solver's nodes")] = 2.0,
+            label: Annotated[Optional[str], typer.Option(help="name of the saved lap")] = None,
+            width: Annotated[Optional[float], typer.Option(help="track width, m (michigan2026: a line only)")] = None,
+            verbose: bool = False):
+    """Minimum-time racing line (double track, ~5-7 min, cached), driven, scored, lap saved."""
+    from kmslap.events.laptime import run
+    run(track.value, grip, margin, step, label, verbose, width)
+
+
+@app.command()
+def race(track: Annotated[TrackName, typer.Argument()] = TrackName.michigan2026,
+         label: Annotated[list[str], typer.Option(help="only these saved laps (repeatable)")] = [],
+         out: Annotated[str, typer.Option(help=".gif, or .mp4 (smaller, faster)")] = "race.mp4",
+         speedup: Annotated[float, typer.Option(help="playback speed")] = 4.0,
+         rerun: Annotated[bool, typer.Option("--rerun", help="3D in the Rerun viewer instead")] = False,
+         save: Annotated[Optional[str], typer.Option(help="with --rerun: write this .rrd, don't open")] = None):
+    """Race the laps saved on a track (kmslap laptime, ...) against each other: a video, or 3D in Rerun."""
+    from kmslap.events.track import TRACK_NAMES
+    from kmslap.reporting import birdseye, runs
+    laps = runs.load_laps(track.value, label or None)
+    if not laps:
+        raise typer.BadParameter(f"no saved laps for {track.value} (run kmslap laptime {track.value})")
+    t = TRACK_NAMES[track.value]()
+    for name, d in laps.items():
+        print(f"{name:52s} {d.attrs['lap_time']:6.2f} s  {d.attrs.get('penalties', '')}")
+    if rerun:
+        from kmslap.reporting.race3d import show
+        print(f"wrote {show(laps, t, save)}")
+        return
+    birdseye.lap_gif(laps, track=t, out=out, speedup=speedup, title=f"{t.name}: flying laps")
+    print(f"wrote {out}")
+
+
+@app.command()
+def birdseye(out: str = "birdseye", gif: Annotated[bool, typer.Option(help="also the lap GIF (~1 min)")] = True):
+    """Endurance strategy presets racing a flying lap on Michigan 2026: GIF + speed map."""
+    from kmslap.reporting.birdseye import run
+    run(out, gif=gif)
 
 
 @app.command()

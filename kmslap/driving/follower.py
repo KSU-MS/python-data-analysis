@@ -53,7 +53,10 @@ class PathFollower:
     speed: object
     car: Car = field(default_factory=Car)
     steer_preview: float = 0.15      # s of travel for the curvature feedforward
-    k_lateral: float = 0.08          # rad of road wheel per m off the path
+    # rad of road wheel per m off the path. 0.08 spun the car at speed: stiff lateral
+    # correction set up weaving that grew through fast direction changes (0.04 holds
+    # every line at every pace tried, within ~0.1 s of 0.08's lap where both hold)
+    k_lateral: float = 0.04
     k_lateral_i: float = 0.05        # rad per (m * s)
     k_heading: float = 0.6           # rad per rad
     k_yaw: float = 0.06              # rad per rad/s of yaw rate error
@@ -70,6 +73,13 @@ class PathFollower:
     slide_lift: tuple = (math.radians(7), math.radians(12))   # rear slip angle: start lifting, fully off
     laps: int | None = None
     coast_time: float = 0.0
+    # a planned trajectory's (models/mintime_dt): road wheel angle, body slip and yaw
+    # rate per path point. Steer feedforward instead of wheelbase * curvature, and the
+    # heading / yaw rate feedback relative to the plan's body slip and yaw rate, so the
+    # driver doesn't steer out the slip the line is driven with. None: kinematic.
+    steer_ff: np.ndarray | None = None
+    beta_ff: np.ndarray | None = None
+    yaw_ff: np.ndarray | None = None
     # brake feel with regen blending: braking torque per unit pedal is this much more
     # than the friction brakes' (a driver adapts to the pedal). 0 = no blending.
     brake_regen_fraction: float = 0.0
@@ -83,6 +93,17 @@ class PathFollower:
     _integral: float = 0.0
     _lat_integral: float = 0.0
     _t_last: float | None = None
+
+    @classmethod
+    def for_plan(cls, plan, car: Car = None, **kw) -> "PathFollower":
+        """Follow a models/mintime_dt plan: its line and speeds, with its steer, body
+        slip and yaw rate as feedforward. With the plan's steer the feedback is only a
+        correction, so it can be stiffer (and the steer isn't previewed: the plan's
+        steer already leads its path); these gains tracked the Michigan 2026 plan best
+        (to ~0.25 m median, no penalties)."""
+        opts = dict(steer_ff=plan.steer_ff, beta_ff=plan.beta_ff, yaw_ff=plan.yaw_ff,
+                    steer_preview=0.0, k_lateral=0.08, k_heading=1.0)
+        return cls(plan.line, speed=plan.v, car=car or Car(), **{**opts, **kw})
 
     def __post_init__(self):
         n = len(self.path.s)
@@ -114,11 +135,14 @@ class PathFollower:
         i = self._i
         h = p.heading[i]
         e_lat = -math.sin(h) * (X - p.x[i]) + math.cos(h) * (Y - p.y[i])    # + left of the line
+        if self.beta_ff is not None:
+            h = h - self.beta_ff[i]                          # the body's planned heading
         e_head = (psi - h + math.pi) % (2 * math.pi) - math.pi
         j = p.ahead(i, self.steer_preview * vx)
-        delta_ff = self.car.wheelbase * p.k[j]
+        delta_ff = self.car.wheelbase * p.k[j] if self.steer_ff is None else self.steer_ff[j]
+        yaw_ref = vx * p.k[i] if self.yaw_ff is None else self.yaw_ff[i]
         fb = (self.k_lateral * e_lat + self.k_heading * e_head
-              + self.k_yaw * (obs["r"] - vx * p.k[i]) + self._lat_integral)
+              + self.k_yaw * (obs["r"] - yaw_ref) + self._lat_integral)
         delta = delta_ff - fb
         sw = delta * self.car.steer_ratio
         if abs(sw) < self.max_steering_wheel:              # anti-windup

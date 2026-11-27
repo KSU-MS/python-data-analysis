@@ -7,8 +7,8 @@ from kmslap.ops import remote
 from kmslap.car.powertrain import MOTORS, PACKS
 
 runner = CliRunner()
-COMMANDS = [[], ["accel"], ["report"], ["report-diff"], ["viz"], ["drive"], ["endurance"], ["strategy"],
-            ["bench"], ["dyno"], ["aero"], ["pack-temps"], ["remote"], ["remote", "run"], ["remote", "setup"], ["remote", "fetch"],
+COMMANDS = [[], ["accel"], ["report"], ["report-diff"], ["junit-summary"], ["viz"], ["drive"], ["endurance"], ["strategy"],
+            ["bench"], ["dyno"], ["aero"], ["pack-temps"], ["laptime"], ["race"], ["birdseye"], ["remote"], ["remote", "run"], ["remote", "setup"], ["remote", "fetch"],
             ["remote", "log"], ["cluster"], ["cluster", "selftest"]]
 
 
@@ -23,6 +23,8 @@ def test_choices_match_the_model():
     # listed in cli.py so completion doesn't import the model
     assert {m.value for m in cli.Motor} == set(MOTORS)
     assert {p.value for p in cli.PackName} == set(PACKS)
+    from kmslap.events.track import TRACK_NAMES
+    assert {t.value for t in cli.TrackName} == set(TRACK_NAMES)
 
 
 def test_accel_runs():

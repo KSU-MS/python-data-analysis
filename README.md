@@ -11,8 +11,8 @@ log analysis notebooks and scripts are in `legacy/`.
 | Package | What |
 |---|---|
 | `kmslap/car/` | `Car` parameters, tires (`PacejkaTire`, combined slip), motor map and pack (`powertrain.py`), and the original motor dq / battery / Pacejka fit models they're built on |
-| `kmslap/models/` | CasADi models: `accel1d.py` (accel event plant), `twotrack.py` (four-wheel car), `envelope.py` (grip envelope by optimization) |
-| `kmslap/events/` | `accel.py` (`simulate`, `quasi_static`), `launch.py` (launch strategies), `endurance.py`, `track.py` (real track lines) |
+| `kmslap/models/` | CasADi models: `accel1d.py` (accel event plant), `twotrack.py` (four-wheel car), `envelope.py` (grip envelope by optimization), `mintime.py` / `mintime_dt.py` (minimum-time racing lines) |
+| `kmslap/events/` | `accel.py` (`simulate`, `quasi_static`), `launch.py` (launch strategies), `endurance.py`, `track.py` (tracks: lines, widths, cones, penalties), `laptime.py` (racing line, driven and scored) |
 | `kmslap/driving/` | `paths.py` (lines, skidpad), `follower.py` (drivers), `policies.py` (DRS, regen), `drive.py` (the loop) |
 | `kmslap/vcu/` | the C++ controller in the loop (`firmware.py`), Python TC, system ID, Monte Carlo over uncertain coefficients |
 | `kmslap/strategy.py` | endurance strategy tuning (pace, coasting, DRS, regen) |
@@ -27,6 +27,7 @@ log analysis notebooks and scripts are in `legacy/`.
 - [Accel event](#accel-event)
 - [Driving the car (double-track model)](#driving-the-car-double-track-model)
 - [Endurance and DRS](#endurance-and-drs)
+- [Racing lines and lap time](#racing-lines-and-lap-time)
 - [VCU controller (sim + car)](#vcu-controller-sim--car)
 - [Running jobs on another machine](#running-jobs-on-another-machine)
 - [Validation against car data](#validation-against-car-data)
@@ -124,8 +125,9 @@ installs it into `.venv/bin`: activate the venv to use it as `kmslap`, or prefix
 nix profile install .#completions   # Nix: zsh and bash, no rc file edits (works with a
                                     # read-only home-manager .zshrc); new shells pick it up
 kmslap --install-completion         # without Nix: appends to your shell's rc file
-kmslap --help                       # commands: accel report report-diff viz drive endurance
-                                    # strategy bench dyno pack-temps remote cluster
+kmslap --help                       # commands: accel report report-diff junit-summary viz drive
+                                    # endurance laptime race birdseye strategy bench dyno aero
+                                    # pack-temps remote cluster
 ```
 
 The completion only asks `kmslap` when you press TAB, so it's inert outside this repo's
@@ -264,6 +266,61 @@ inverter.
 reserve. Candidates are scored on 2 laps projected to the event (energy from the cells
 through the pack's voltage curve; checked against full events to ~0.3% SOC), in
 parallel, and the winners confirmed with full 18-lap events.
+
+## Racing lines and lap time
+
+Tracks (`kmslap/events/track.py`) are a centerline with the free width to each side:
+
+- `michigan2026`: the traced 2026 EV endurance line, a line only, so its width is a
+  guess (4.5 m, `--width` to change it).
+- `ac18`: a real coned course at the same site, the Assetto Corsa `fsae_michigan18`
+  track's cones (`tracks/michigan_ac18_cones.geojson`, from the fsae-ev-endurance-map
+  repo). It's mostly ~4.8 m gates every ~25 m plus two ~3.5-4 m wide hairpins; a
+  hand-ordered route through them gives the driving order, and the edges join the
+  cones. Not the 2026 layout.
+
+Three lines, each a step up:
+
+| Line | How | What it leaves out |
+|---|---|---|
+| minimum curvature | `racing_line(track)`: geometry only, bounded least squares | the car: entry / exit speed trade-offs |
+| minimum time, quasi-steady | `models/mintime.py`: line and speed together inside the car's g-g-v envelope (Christ et al. / TUM, curvilinear OCP, Ipopt) | yaw: plans direction changes the car can't make |
+| minimum time, double track | `models/mintime_dt.py`: the envelope's own four-wheel car (tires, load transfer, aero, LSD, motor, 80 kW) at every point, with yaw rate and body slip as states | the time-domain model's lags (tire relaxation, roll, wheel spin) |
+
+The double-track plan also gives the steer, body slip and yaw rate along the line;
+`PathFollower.for_plan(plan)` drives with them as feedforward. The driver otherwise
+steers out the body slip the line is driven with and runs wide.
+
+```sh
+kmslap laptime ac18 --grip 0.85 --margin 0.35   # solve (~5-7 min, cached), drive, score, save the lap
+kmslap laptime michigan2026 --width 7           # the 2026 line at another guessed width
+kmslap race ac18                                # every saved lap racing: race.mp4 (or --out race.gif)
+kmslap race ac18 --rerun                        # the same in 3D in Rerun, with plots on the timeline
+# the solves are heavy: run them on the desktop and bring the laps back
+kmslap remote run --fetch build/runs --fetch build/mintime -- kmslap laptime ac18 --margin 0.35
+```
+
+Flying laps at 85% grip, driven in the time-domain car (`kmslap laptime`, Nov 2026):
+
+| Line | Michigan 2026 (4.5 m wide) | AC cone course |
+|---|---|---|
+| centerline (the old driver) | 92.4 s, 2 off course | 98.5 s, 1 cone |
+| minimum curvature | 69.4 s | 68.2 s, 26 cones |
+| minimum time, quasi-steady | 64.4 s | 56.6 s, 28 cones |
+| minimum time, double track, plan feedforward | **59.2 s** (plan 58.9) | **50.8 s**, 43 cones (plan 49.8) |
+
+The 2026 track's width matters most and isn't known: the same plan is 59.2 s at 4.5 m,
+49.9 s at 7 m and 43.1 s at 10 m (all clean). On the cone course the lines apex every
+gate, and the driver's tracking error (median ~0.2 m, ~1 m at the 99th percentile,
+mostly cutting inside) clips cones: planning with more room costs time and still hits
+some (0.35 m: 53.2 s, 32 cones; 0.55 m: 56.6 s, 18 cones). The gap is the plan's model
+vs the time-domain car's (tire relaxation, roll and wheel-spin lags the plan doesn't
+have); the driver gains don't close it.
+
+Laps are scored for FSAE penalties: a cone hit is 2 s (a cone within its base radius of
+the car's footprint); off course is 20 s (all four tires outside the edges). Every
+driven lap can be saved (`reporting/runs.py`, `build/runs/<track>/`: the time series
+plus lap time, penalties and settings) and raced against the others (`kmslap race`).
 
 ## VCU controller (sim + car)
 
@@ -435,7 +492,7 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 | `build/` | generated, gitignored: the compiled CasADi model |
 | `tests/` | pytest suite |
 | `accel_sim.ipynb` | main accel notebook |
-| `tracks/` | track lines (GeoJSON): FSAE Michigan 2026 EV endurance |
+| `tracks/` | tracks (GeoJSON): the FSAE Michigan 2026 EV endurance line, the Assetto Corsa Michigan cone course |
 | `datasheets/` | COSMX cell (image + `cosmx_95b0d0hd.toml`, read by `Pack`), EMRAX 228 PDF, its efficiency map digitized to CSV (`extract_emrax_efficiency.py`, with a check overlay) |
 | `cardata/`, `olapsims/` | logged car data (KS5e launches, KS6e accumulator tests, dyno pulls in `cardata/dyno/`, 2024 aero tests in `cardata/aero/`), OptimumLap export |
 | `legacy/` | older log analysis, motor curve, battery and wiring notebooks and scripts (many read logs from paths that aren't in the repo); to review for what's worth bringing back |

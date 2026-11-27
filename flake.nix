@@ -87,7 +87,7 @@
           # rerun: the viewer for kmslap/reporting/viz.py, first on PATH so it wins over the
           # wheel's bundled viewer (which needs GL/Wayland libs NixOS doesn't expose).
           # pyproject.toml pins rerun-sdk to this version.
-          packages = [ pkgs.rerun venv pkgs.uv ];
+          packages = [ pkgs.rerun venv pkgs.uv pkgs.ffmpeg ];   # ffmpeg: MP4 race animations
           env = {
             # the env is built by Nix from uv.lock: `uv run` uses it as-is, and
             # never syncs or downloads anything
