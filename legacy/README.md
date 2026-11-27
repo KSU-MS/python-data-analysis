@@ -29,14 +29,12 @@ Code here imports the old root modules (`motor`, `battery`, `tire`), which moved
 
 The old laptop's formula folder (63 GB): `/run/media/matty/1TB/old_oxos_laptop_user/formula`,
 mostly `MatthewS/ks6e_logs/` and dated folders of parsed CSVs (one column per CAN signal,
-each sparse; epoch-ms `Time`). Most useful for `kmslap`, beyond the dyno and accumulator
-data already pulled in:
+each sparse; epoch-ms `Time`). Reviewed for what's still relevant to the current car:
 
 | Folder | For |
 |---|---|
-| `11_30_23 Acc Thermal Mass Validation/` | the pack thermal model (more tests, maybe a cool-down to pin hA) |
-| `MatthewS/ks6e_logs/5_26_23 Full Enduro/`, `6_19_23 ECAR COMP/` | validating the endurance model: energy per lap, pack temperature, SOC |
-| `7_6_aero_test_with_aero/`, `7_6_aero_test_no_aero/` | aero: if these are coast-downs, real CdA (and ClA from loads) for the placeholders |
-| `MatthewS/ks6e_logs/4_26_23 Dyno & Regen day/` | regen efficiency on the dyno |
-| `MatthewS/ks6e_logs/4_10_23 Accel & Skidpad Runs/`, `4_19_23 Accel runs/`, `4_20_23 More GG Circle/` | accel launches (like the KS5e ones in `cardata/ks5e/`), the grip envelope |
-| `10_16_23 Dyno day/`, `10_19_23 Dyno day HW Overcurrent/` | more dyno pulls (the `.drf` WinPEP files need exporting to text first) |
+| `7_6_aero_test_with_aero/`, `7_6_aero_test_no_aero/` | 6 July 2024 (KS7e), same day with and without aero. Parsed logs have VectorNav (velocity, accel, attitude), all four shock pots and wheel speeds, motor speed, front/rear brake pressure, steering: CdA from coast-downs or power vs speed, ClA and balance from shock deflection vs speed^2 (with spring / motion ratios). Pertinent if the current aero is close to 2024's |
+
+Not pursued: the 2023 accumulator thermal tests (an old accumulator design), the 2023
+endurance / competition, regen-day and accel / g-g logs, the other dyno days (KS6e-era
+car, and the `.drf` WinPEP files would need exporting), the 2022 aero tests.
