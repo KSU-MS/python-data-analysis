@@ -36,6 +36,12 @@ class Car:
     aero_front: float = 0.45        # fraction of downforce on the front axle
     rho: float = 1.226              # air density, kg/m^3
     crr: float = 0.015              # rolling resistance coefficient, ESTIMATE
+    # the plan-view footprint past the axles (cone hits). FSAE 2027 T.7.5 lets wings reach
+    # 700 mm ahead of the front tires and 250 mm behind the rear; ours come within about
+    # an inch of both (the user's recollection, not measured: ESTIMATE). Nothing is wider
+    # than the tires (T.7.6), so the footprint is CAR_WIDTH wide
+    overhang_front: float = 0.229 + 0.700 - 0.025   # m ahead of the front axle
+    overhang_rear: float = 0.229 + 0.250 - 0.025    # m behind the rear axle
 
     wheel_inertia: float = 0.10     # kg m^2 per wheel+tire, ESTIMATE
     rear_driveline_inertia: float = 0.01  # sprocket/diff/axle on the wheel side, ESTIMATE

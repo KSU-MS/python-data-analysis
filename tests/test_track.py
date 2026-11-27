@@ -46,6 +46,21 @@ def test_penalties_count_cones_and_off_course():
     assert wide.seconds == 20.0
 
 
+def test_cone_footprint_reaches_the_wings():
+    # the car stops with its CG at x = 10, heading +x: a cone just inside the front wing's
+    # reach is hit, one just past it isn't; behind, the reach is the shorter rear wing
+    from kmslap.car.params import Car
+    car = Car()
+    center = Path(np.linspace(-10, 30, 81), np.zeros(81))
+    n = len(center.s)
+    front = 10 + car.cg_to_front + car.overhang_front + T.CONE_RADIUS
+    rear = 10 - (car.wheelbase - car.cg_to_front) - car.overhang_rear - T.CONE_RADIUS
+    x, y, psi = np.array([10.0]), np.array([0.0]), np.array([0.0])
+    for cone, hit in [(front - 0.05, 1), (front + 0.05, 0), (rear + 0.05, 1), (rear - 0.05, 0)]:
+        t = T.Track("straight", center, np.full(n, 2.5), np.full(n, 2.5), cones=np.array([[cone, 0.0]]))
+        assert len(T.cone_hits(t, x, y, psi, car)) == hit, cone
+
+
 def test_saved_laps_round_trip(tmp_path, monkeypatch):
     from kmslap.reporting import runs
     monkeypatch.setattr(runs, "RUNS", tmp_path)

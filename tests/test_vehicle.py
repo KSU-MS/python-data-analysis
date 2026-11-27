@@ -137,3 +137,31 @@ def test_controller_in_the_loop(motor, pack):
     t1d = simulate(Car(), motor, pack=pack, controller=FirmwareController(mode="mu_adaptive")).accel_time
     assert t2d == pytest.approx(t1d, rel=0.01)
     assert len(res.controller_log) > 4000
+
+
+def test_plan_feedforward_scales_to_the_actual_speed_and_the_plans_grip():
+    # a 10 m circle planned at 10 m/s: the plan's steer / body slip beyond the kinematic
+    # scale with v^2 and its grip, its yaw rate with v
+    car = Car()
+    a = np.linspace(0, 2 * np.pi, 400, endpoint=False)
+    line = Path(10 * np.cos(a), 10 * np.sin(a), closed=True)
+    n = len(line.s)
+    kin = car.wheelbase * line.k
+    steer = kin + 0.02
+    yaw = 10.0 * line.k
+    lr = car.front_weight * car.wheelbase
+    beta = lr * line.k - 0.03
+    obs = dict(X=10.0, Y=0.0, psi=math.pi / 2, vy=0.0, r=1.0)
+
+    def ff(vx, grip):
+        f = PathFollower(line, speed=np.full(n, 10.0), car=car, steer_ff=steer, yaw_ff=yaw,
+                         beta_ff=beta, plan_grip=grip)
+        f(0.0, {**obs, "vx": vx})
+        return f.plan_ff
+
+    d, r = ff(10.0, 1.0)
+    assert d == pytest.approx(steer[0]) and r == pytest.approx(yaw[0])     # the plan as planned
+    d, r = ff(5.0, 1.0)
+    assert d == pytest.approx(kin[0] + 0.02 / 4) and r == pytest.approx(yaw[0] / 2)
+    d, _ = ff(10.0, 0.85)
+    assert d == pytest.approx(kin[0] + 0.02 * 0.85)

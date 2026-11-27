@@ -379,10 +379,10 @@ class Penalties:
         return f"{self.cones} cones, {self.off_course} off course (+{self.seconds:g} s)"
 
 
-def cone_hits(track: Track, X, Y, psi, car=None, overhang: float = 0.45) -> list[tuple[int, int]]:
+def cone_hits(track: Track, X, Y, psi, car=None) -> list[tuple[int, int]]:
     """(cone index, first sample touching it) for each cone the trajectory hits: within
-    its base radius of the car's footprint (wheelbase + overhang at each end, CAR_WIDTH
-    wide). None on a track without cones: an empty list."""
+    its base radius of the car's footprint (the axles + the car's overhang ahead and
+    behind, CAR_WIDTH wide). None on a track without cones: an empty list."""
     from kmslap.car.params import Car
 
     car = car or Car()
@@ -391,14 +391,15 @@ def cone_hits(track: Track, X, Y, psi, car=None, overhang: float = 0.45) -> list
     X, Y, psi = (np.asarray(a, float) for a in (X, Y, psi))
     c, s_ = np.cos(psi), np.sin(psi)
     lf, lr = car.cg_to_front, car.wheelbase - car.cg_to_front
+    front, rear = lf + car.overhang_front, lr + car.overhang_rear
     hits = []
     for i, (cx, cy) in enumerate(track.cones):
-        near = np.flatnonzero(np.hypot(X - cx, Y - cy) < lf + overhang + CAR_WIDTH)
+        near = np.flatnonzero(np.hypot(X - cx, Y - cy) < max(front, rear) + CAR_WIDTH)
         if not len(near):
             continue
         dx, dy = cx - X[near], cy - Y[near]
         u, v = c[near] * dx + s_[near] * dy, -s_[near] * dx + c[near] * dy     # car frame
-        du = np.maximum(np.maximum(u - (lf + overhang), -(lr + overhang) - u), 0)
+        du = np.maximum(np.maximum(u - front, -rear - u), 0)
         dv = np.maximum(np.abs(v) - CAR_WIDTH / 2, 0)
         touch = np.flatnonzero(np.hypot(du, dv) < CONE_RADIUS)
         if len(touch):
@@ -426,14 +427,14 @@ def off_course(track: Track, X, Y, psi, car=None) -> np.ndarray:
     return np.flatnonzero(np.diff(np.r_[False, out].astype(int)) == 1)
 
 
-def penalties(track: Track, X, Y, psi, car=None, overhang: float = 0.45) -> Penalties:
+def penalties(track: Track, X, Y, psi, car=None) -> Penalties:
     """FSAE penalties of a driven trajectory (world X, Y, heading psi, in the track's
     frame): a cone is hit when it's within its base radius of the car's footprint
     (cone_hits); off course is all four tire contact points outside the edges at once
     (off_course). Cones are only checked on a coned track."""
     X, Y = np.asarray(X, float), np.asarray(Y, float)
     cn = track.center
-    hits = cone_hits(track, X, Y, psi, car, overhang)
+    hits = cone_hits(track, X, Y, psi, car)
     cone_s = [float(cn.s[_nearest(cn, [track.cones[i][0]], [track.cones[i][1]])[0]]) for i, _ in hits]
     cone_hits_n = len(hits)
     starts = off_course(track, X, Y, psi, car)

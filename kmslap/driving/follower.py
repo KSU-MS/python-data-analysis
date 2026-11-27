@@ -78,6 +78,9 @@ class PathFollower:
     # heading / yaw rate feedback relative to the plan's body slip and yaw rate, so the
     # driver doesn't steer out the slip the line is driven with. None: kinematic.
     steer_ff: np.ndarray | None = None
+    # the tire grip the plan was solved with (its fraction of the tires' friction): the
+    # plan's slip angles are for that tire; the car's full-grip tires need less
+    plan_grip: float = 1.0
     beta_ff: np.ndarray | None = None
     yaw_ff: np.ndarray | None = None
     # brake feel with regen blending: braking torque per unit pedal is this much more
@@ -155,14 +158,24 @@ class PathFollower:
         i = self._i
         h = p.heading[i]
         e_lat = -math.sin(h) * (X - p.x[i]) + math.cos(h) * (Y - p.y[i])    # + left of the line
+        # the plan's feedforward is for its own speed: at another speed the same path
+        # takes the yaw rate v k, and the steer and body slip beyond the kinematic
+        # (L k, l_r k) scale with the lateral acceleration, v^2 (steady-state bicycle),
+        # and with the plan's grip (a tire scaled to it is that much less stiff). Unscaled,
+        # the car turns tighter than the plan and clips the apex cones
+        ratio = min(max(vx / max(float(self._v_target[i]), 1.0), 0.0), 1.5)
+        slip = ratio ** 2 * self.plan_grip
+        lr = self.car.front_weight * self.car.wheelbase
         if self.beta_ff is not None:
-            h = h - self.beta_ff[i]                          # the body's planned heading
+            beta = lr * p.k[i] + (self.beta_ff[i] - lr * p.k[i]) * slip
+            h = h - beta                                     # the body's planned heading
         e_head = (psi - h + math.pi) % (2 * math.pi) - math.pi
         j = p.ahead(i, self.steer_preview * vx)
-        delta_ff = self.car.wheelbase * p.k[j] if self.steer_ff is None else self.steer_ff[j]
-        yaw_ref = vx * p.k[i] if self.yaw_ff is None else self.yaw_ff[i]
+        kin = self.car.wheelbase * p.k[j]
+        delta_ff = kin if self.steer_ff is None else kin + (self.steer_ff[j] - kin) * slip
+        yaw_ref = vx * p.k[i] if self.yaw_ff is None else self.yaw_ff[i] * ratio
         if self.yaw_ff is not None and self.steer_ff is not None:       # for the torque vectoring
-            self.plan_ff = (self.steer_ff[j], self.yaw_ff[i])
+            self.plan_ff = (delta_ff, yaw_ref)
         fb = (self.k_lateral * e_lat + self.k_heading * e_head
               + self.k_yaw * (obs["r"] - yaw_ref) + self._lat_integral)
         delta = delta_ff - fb

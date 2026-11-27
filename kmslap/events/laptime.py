@@ -105,7 +105,7 @@ def run(track_name: str = "michigan2026", grip: float = 0.85, margin: float = T.
         regen = RegenPolicy(regen_travel=regen_travel)
         kw = dict(regen_travel=regen_travel, regen_wheel_torque=regen_wheel_torque(car, regen),
                   regen_power=regen_power(car, Pack(PACKS["cosmx600v"]), soc))
-    f = PathFollower.for_plan(p, car=car, laps=3, **kw)
+    f = PathFollower.for_plan(p, car=car, laps=3, plan_grip=grip, **kw)
     line = p.line
     res = drive(f, car, psi0=float(line.heading[0] - p.beta_ff[0]), X0=float(line.x[0]),
                 Y0=float(line.y[0]), t_max=3 * 4 * p.lap_time, log_period=0.02, torque_mode=torque_mode,

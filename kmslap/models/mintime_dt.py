@@ -224,7 +224,8 @@ def solve(center, env=None, *, car: Car = None, motor: MotorMap | str = "228HV",
           grip: float = 1.0, step: float = 2.0, max_steering_wheel: float = math.radians(120),
           max_beta: float = math.radians(10), w_steer: float = 1.0, w_drive: float = 1e-3,
           w_slip: float = 1e-2, max_iter: int = 3000, verbose: bool = False, warm=None,
-          regen: bool = False, soc: float = 1.0, label: str = "") -> MinTimeDT:
+          regen: bool = False, soc: float = 1.0, label: str = "",
+          cones: bool = True) -> MinTimeDT:
     """center: a Track, or a centerline (then the track is `width` wide).
     grip: the tires' friction scale (a driver uses ~0.9 of it).
     w_*: penalties on the rates of steer (rad/m), torque / brake (per 100 Nm / kNm
@@ -239,7 +240,12 @@ def solve(center, env=None, *, car: Car = None, motor: MotorMap | str = "228HV",
         peak (the cells' 2 s rating: a braking zone's worth; the car model holds it to
         that) within the cells' max voltage, which at a full pack leaves little.
     soc: the pack's state of charge the lap is driven at (its voltage).
-    label: what's being planned, for the progress line."""
+    label: what's being planned, for the progress line.
+    cones: on a coned track, keep every cone `margin` clear of the car's footprint (its
+        axles + overhang ahead and behind, as track.penalties scores cones): at each node
+        whose footprint spans the cone, the car's side there (its heading to the track
+        swings it out) stays clear of the cone, on the side the cone marks. Exact at the cones, where the edges
+        between gates are interpolated. False: the edges only."""
     car = car or Car()
     motor = MotorMap(motor) if isinstance(motor, str) else motor
     pack = Pack(PACKS[pack]) if isinstance(pack, str) else pack
@@ -299,6 +305,29 @@ def solve(center, env=None, *, car: Car = None, motor: MotorMap | str = "228HV",
     opti.subject_to(opti.bounded(2.0, v_, 40.0))
     opti.subject_to(opti.bounded(-max_beta, beta_, max_beta))
     opti.subject_to(opti.bounded(ca.DM(lo).T, n_, ca.DM(hi).T))
+    if cones and track.cones is not None:
+        # each cone against the side of the footprint at its place along the track
+        lf = (1 - car.front_weight) * car.wheelbase
+        lr = car.front_weight * car.wheelbase
+        front, rear = lf + car.overhang_front, lr + car.overhang_rear
+        nxr, nyr = track_mod.normals(ref)
+        idx, ahead, n_cone, side = [], [], [], []
+        for cx, cy in track.cones:
+            j = int(np.argmin(np.hypot(ref.x - cx, ref.y - cy)))
+            nc = (cx - ref.x[j]) * nxr[j] + (cy - ref.y[j]) * nyr[j]
+            sc = ref.s[j] + (cx - ref.x[j]) * np.cos(ref.heading[j]) + (cy - ref.y[j]) * np.sin(ref.heading[j])
+            d = (sc - ref.s + ref.length / 2) % ref.length - ref.length / 2      # the cone ahead of each node
+            # the nodes whose footprint spans the cone, and a node beyond at each end (the
+            # path between nodes is interpolated): those at the footprint's nearer end
+            for i in np.flatnonzero((d <= front + ds) & (d >= -rear - ds)):
+                idx.append(int(i)); n_cone.append(nc); side.append(1.0 if nc > 0 else -1.0)
+                ahead.append(float(np.clip(d[i], -rear, front)))
+        if idx:
+            a, sgn = ca.DM(ahead).T, ca.DM(side).T
+            nn, xx = n_[0, idx], xi_[0, idx]
+            flank = nn + a * ca.sin(xx) + sgn * (car_width / 2) * ca.cos(xx)   # the car's side facing the cone
+            clear = track_mod.CONE_RADIUS + margin
+            opti.subject_to(sgn * (ca.DM(n_cone).T - flank) >= clear)
     opti.subject_to(opti.bounded(-1.0, xi_, 1.0))
     steer_, kfl, kfr, krl, krr, torque_, brake_, ax_, ay_ = (U[i, :] for i in range(len(CONTROLS)))
     hub_ = U[len(CONTROLS):, :]

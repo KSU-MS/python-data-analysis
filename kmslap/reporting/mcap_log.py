@@ -306,7 +306,6 @@ def sensor_signals(d: pd.DataFrame, track, car: Car, t0_ns: int, seed: int = 0) 
     n = len(d)
     t = d.t.to_numpy()
     rate = lambda x: np.gradient(np.asarray(x, float), t)
-    running = t >= 0
     rpm = d.motor_rpm.to_numpy()
     torque = d.motor_torque.to_numpy()
     cmd = d.torque_cmd.to_numpy() if "torque_cmd" in d else torque
@@ -754,7 +753,7 @@ def run(track_name: str = "ac18", laps: int = 2, grip: float = 0.85, margin: flo
         regen = RegenPolicy(regen_travel=0.9)
         kw = dict(regen_travel=0.9, regen_wheel_torque=regen_wheel_torque(car, regen),
                   regen_power=regen_power(car, Pack(PACKS["cosmx600v"]), soc))
-    f = PathFollower.for_plan(p, car=car, laps=laps, **kw)
+    f = PathFollower.for_plan(p, car=car, laps=laps, plan_grip=grip, **kw)
     line = p.line
     res = drive(f, car, psi0=float(line.heading[0] - p.beta_ff[0]), X0=float(line.x[0]), Y0=float(line.y[0]),
                 t_max=(laps + 1) * 4 * p.lap_time, log_period=0.005, regen=regen, soc0=soc,

@@ -119,7 +119,7 @@ class HilRunner:
         if self.plan is None:
             self.plan = plan(self.track, self.grip, self.margin, 2.0, self.car)
         p = self.plan
-        follower = PathFollower.for_plan(p, car=self.car, laps=laps)
+        follower = PathFollower.for_plan(p, car=self.car, laps=laps, plan_grip=self.grip)
         names = {k: i for i, k in enumerate(twotrack.STATES)}
         onames = {k: i for i, k in enumerate(twotrack.OUTPUTS)}
         self.backend = self._backend()
