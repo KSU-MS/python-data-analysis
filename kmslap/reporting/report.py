@@ -410,7 +410,7 @@ def run(out: str = "report", plants: int = 20):
     _fig_controller(runs["VCU mu_adaptive"], out / "controller_view.png")
 
     # final drive sweep
-    sweep = _fd_sweep(car, motor, [2.4, 2.7, 3.0, 3.5, 4.0, 4.5, 5.0])
+    sweep = _fd_sweep(car, motor, sorted({2.4, 2.7, 3.0, 3.5, 4.0, 4.5, 5.0, car.final_drive}))
     _fig_fd(sweep, car.final_drive, out / "fd_sweep.png")
     for fd, *_, vcu_time in sweep:
         metric(f"accel time: VCU mu_adaptive, FD {fd:g}", vcu_time, "s")
@@ -449,14 +449,16 @@ def run(out: str = "report", plants: int = 20):
         metric(f"robustness mean: {c}", mc[c].mean(), "% over ideal")
         metric(f"robustness worst: {c}", mc[c].max(), "% over ideal")
 
-    # plausibility: controller configured with the wrong final drive
-    true_fd, belief_fd = 4.0, car.final_drive
-    wrong = dataclasses.replace(car, final_drive=true_fd)
+    # plausibility: controller configured with the wrong final drive (the two values in
+    # circulation: the VCU's 4.18, kmslap's old 3.0; which the car has isn't measured)
+    true_fd, belief_fd = car.final_drive, 3.0
+    wrong = car
+    belief = dataclasses.replace(car, final_drive=belief_fd)
     ratio_runs = {
         "no TC": simulate(wrong, motor),
         "VCU, no ratio check": simulate(wrong, motor, controller=FirmwareController(
-            mode="mu_adaptive", belief=car, overrides=dict(ratio_tolerance=1e9))),
-        "VCU": simulate(wrong, motor, controller=FirmwareController(mode="mu_adaptive", belief=car)),
+            mode="mu_adaptive", belief=belief, overrides=dict(ratio_tolerance=1e9))),
+        "VCU": simulate(wrong, motor, controller=FirmwareController(mode="mu_adaptive", belief=belief)),
     }
     _fig_gear_ratio(ratio_runs, true_fd, belief_fd, out / "gear_ratio_check.png")
     log = ratio_runs["VCU"].controller_log
