@@ -47,7 +47,9 @@ VARIABLES = ["beta", "steer", "kappa_fl", "kappa_fr", "kappa_rl", "kappa_rr", "t
              "hub_f", "hub_r", "rho"]      # hub_*: each hub motor's torque on that axle (car.hub_front / rear)
 MAX_SLIP_ANGLE = 0.2     # rad, about the TTC data's range
 MAX_BETA = math.radians(8)
-# starting guesses per regime (scaled variables): accelerating, cornering, braking
+# starting guesses per regime (scaled variables): accelerating, cornering, braking; then
+# hub motors driving, tried only on cars with hub motors (on a car without, they can land
+# on other local optima at a few points, which spoils the lap OCP's warm start)
 _STARTS = [np.array([0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 0.0, 0.0, 0.0, 6.0]),
            np.array([0.02, 0.05, 0.0, 0.0, 0.02, 0.02, 0.3, 0.0, 0.0, 0.0, 10.0]),
            np.array([0.0, 0.0, -0.08, -0.08, -0.05, -0.05, 0.0, 0.8, 0.0, 0.0, 12.0]),
@@ -161,7 +163,7 @@ def _problem(car: Car, motor: MotorMap, pack: Pack, tire, bus_v: float, max_stee
           fx["fl"] * r_t + bf - hub_wheel["fl"], fx["fr"] * r_t + bf - hub_wheel["fr"],
           *rear_eq]
     # motor: map at the loaded bus voltage, smooth; 80 kW at the pack
-    rpm_grid = np.arange(0.0, motor.max_rpm, 100.0)
+    rpm_grid = np.arange(0.0, motor.max_rpm + 1.0, 100.0)          # to max speed, 0 there
     t_max = ca.interpolant("tmax", "bspline", [rpm_grid],
                            [motor.max_torque(r, bus_v) for r in rpm_grid])
     hub_rpm = {w: omega[w] * car.hub_ratio * 60 / (2 * math.pi) for w in WHEELS}
@@ -176,7 +178,7 @@ def _problem(car: Car, motor: MotorMap, pack: Pack, tire, bus_v: float, max_stee
                     for w in WHEELS if hub_on[w])
     else:
         hub_tmax, p_hub = None, 0
-    ineq = [t_max(omega_m * 60 / (2 * math.pi)) - torque,
+    ineq = [t_max(ca.fmin(ca.fmax(omega_m * 60 / (2 * math.pi), 0.0), rpm_grid[-1])) - torque,
             car.power_limit * car.motor_eff - torque * omega_m - p_hub * car.motor_eff]
     ineq += [hub_tmax(hub_rpm[w]) - hub_t[w] for w in ("fl", "rl") if hub_on[w]]
     ineq += [alpha[w] for w in WHEELS]
@@ -235,12 +237,13 @@ def gg_envelope(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | s
     rho = np.full((len(speeds), n_angles), np.nan)
     sol = np.full((len(speeds), n_angles, len(VARIABLES)), np.nan)
     ok = np.zeros((len(speeds), n_angles), bool)
+    starts = _STARTS if car.hub_front or car.hub_rear else _STARTS[:3]
     for i, v in enumerate(speeds):
         guess = None
         for j, th in enumerate(angles):
             # the problem isn't convex: start from the neighbouring angle's solution
             # and from each regime's guess, keep the best that converged
-            for start in ([guess] if guess is not None else []) + _STARTS:
+            for start in ([guess] if guess is not None else []) + starts:
                 res = solver(x0=start, p=[v, math.cos(th), math.sin(th)], **bounds)
                 xs = np.array(res["x"]).ravel()
                 if solver.stats()["success"] and not (ok[i, j] and xs[-1] <= rho[i, j]):

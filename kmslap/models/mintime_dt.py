@@ -124,9 +124,12 @@ def _model(car: Car, motor: MotorMap, tire, bus_v: float, grip: float) -> ca.Fun
                     fx["fl"] * r_t + bf, fx["fr"] * r_t + bf,
                     fx["rl"] * r_t - (0.5 * t_c - t_diff - br),
                     fx["rr"] * r_t - (0.5 * t_c + t_diff - br))
-    rpm_grid = np.arange(0.0, motor.max_rpm, 100.0)
+    # the torque curve to the motor's max speed (0 there), the speed held inside it: a
+    # spline extrapolates wildly, and with a short final drive the solver's steps reach it
+    rpm_grid = np.arange(0.0, motor.max_rpm + 1.0, 100.0)
     t_max = ca.interpolant("tmax", "bspline", [rpm_grid], [motor.max_torque(rr, bus_v) for rr in rpm_grid])
-    ineq = ca.vertcat(t_max(omega_m * 60 / (2 * math.pi)) - torque,          # >= 0
+    rpm = ca.fmin(ca.fmax(omega_m * 60 / (2 * math.pi), 0.0), rpm_grid[-1])
+    ineq = ca.vertcat(t_max(rpm) - torque,                                    # >= 0
                       car.power_limit * car.motor_eff - torque * omega_m,      # >= 0
                       *[alpha[w] for w in WHEELS],                             # |.| <= max slip angle
                       *[fz[w] for w in WHEELS])                                # >= 50 N
