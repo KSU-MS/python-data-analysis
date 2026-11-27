@@ -177,6 +177,13 @@ res.df[["t", "X", "Y", "speed", "ay", "beta", "soc", "pack_temp"]]
 `accel/driver.py` has `ScriptedDriver` (inputs as functions of time) and `PathFollower` (pure
 pursuit steering, acceleration-limited speed control, lifts when the car slides), paths
 (`skidpad()`, `Path.from_segments`) and a speed profile from acceleration limits.
+Target speeds come from the car itself: `accel/envelope.py` solves its grip envelope
+(g-g-v diagram) with Ipopt on the same tire, load transfer, aero, diff and motor model:
+at each speed and direction in the g-g plane, the steady state that maximizes
+acceleration, required to be stable (no drifts the driver would have to catch).
+`envelope.speed_profile(path, env)` turns it into a speed target along a path (90% of the
+envelope by default: what the driver holds in steady cornering in the time-domain model).
+The envelope takes ~2 minutes and is cached in `build/envelope/`.
 `python -m accel.drive --out drive.png` plots a skidpad and a short course. With straight
 steering it reproduces the accel model's times; the tests check steady cornering, left/right
 symmetry, pack charge and heat bookkeeping and the diff.

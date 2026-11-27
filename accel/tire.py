@@ -153,18 +153,52 @@ class PacejkaTire:
     def table_key_2d(self) -> str:
         return _hash("pacejka2d", *self.combined_table())
 
-    def symbolic_fxy(self, kappa, alpha, fz, scale):
-        """(Fx, Fy) per wheel as CasADi expressions, combined slip, at grip `scale`."""
+    def symbolic_fxy(self, kappa, alpha, fz, scale, smooth: bool = False):
+        """(Fx, Fy) per wheel as CasADi expressions, combined slip, at grip `scale`.
+
+        smooth: B-spline instead of linear interpolation, and no clamping, for
+        optimization (Ipopt needs continuous derivatives); keep the inputs inside
+        the table with constraints instead."""
         ks, alphas, fzs, fx, fy = self.combined_table()
         grid = [ks, alphas, fzs]
-        q = ca.vertcat(ca.fmin(ca.fmax(kappa, ks[0]), ks[-1]),
-                       ca.fmin(ca.fmax(alpha, alphas[0]), alphas[-1]),
-                       ca.fmin(ca.fmax(fz, fzs[0]), fzs[-1]))
-        # CasADi wants the first dimension fastest
-        mu_x = ca.interpolant("mux_pacejka", "linear", grid, fx.ravel(order="F"))(q)
-        mu_y = ca.interpolant("muy_pacejka", "linear", grid, fy.ravel(order="F"))(q)
-        f = ca.fmax(fz, 0) * scale
+        kind = "bspline" if smooth else "linear"
+        if smooth:
+            q = ca.vertcat(kappa, alpha, fz)
+        else:
+            q = ca.vertcat(ca.fmin(ca.fmax(kappa, ks[0]), ks[-1]),
+                           ca.fmin(ca.fmax(alpha, alphas[0]), alphas[-1]),
+                           ca.fmin(ca.fmax(fz, fzs[0]), fzs[-1]))
+        mux, muy = _interpolants(self.table_key_2d(), kind, grid, fx, fy)
+        mu_x, mu_y = mux(q), muy(q)
+        f = (fz if smooth else ca.fmax(fz, 0)) * scale
         return mu_x * f, mu_y * f
+
+
+_INTERPOLANTS = {}
+
+
+_CACHE_DIR = Path(__file__).resolve().parent.parent / "build" / "tire"
+
+
+def _interpolants(key, kind, grid, fx, fy):
+    """Built once per table and kind, and kept on disk: a B-spline fit over the 3D
+    grid takes ~7 s."""
+    if (key, kind) not in _INTERPOLANTS:
+        fns = []
+        for name, data in (("mux", fx), ("muy", fy)):
+            path = _CACHE_DIR / f"{name}_{kind}_{key}_{ca.__version__}.casadi"
+            if path.exists():
+                fns.append(ca.Function.load(str(path)))
+                continue
+            # CasADi wants the first dimension fastest
+            f = ca.interpolant(f"{name}_pacejka_{kind}", kind, grid, data.ravel(order="F"))
+            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(f".{np.random.randint(1 << 30)}.tmp")
+            f.save(str(tmp))
+            tmp.replace(path)
+            fns.append(f)
+        _INTERPOLANTS[key, kind] = tuple(fns)
+    return _INTERPOLANTS[key, kind]
 
 
 @lru_cache(maxsize=4)

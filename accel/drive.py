@@ -100,7 +100,8 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from .driver import Path, PathFollower, skidpad, speed_profile
+    from .driver import Path, PathFollower, skidpad
+    from .envelope import gg_envelope, speed_profile
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default="drive.png")
@@ -110,9 +111,10 @@ def main():
     pad = skidpad()
     lap = Path.from_segments([("straight", 40), ("arc", 12, 180), ("straight", 25), ("arc", 6, -90),
                               ("arc", 8, 180), ("straight", 15), ("arc", 15, 90)])
+    env = gg_envelope(car)
     runs = {
         "skidpad 10 m/s": drive(PathFollower(pad, speed=10.0, car=car), car),
-        "course": drive(PathFollower(lap, speed=speed_profile(lap, 10.0, 6.0, 8.0), car=car), car),
+        "course, 90% of envelope": drive(PathFollower(lap, speed=speed_profile(lap, env), car=car), car),
     }
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     for (name, res), c in zip(runs.items(), ["#468ce6", "#e6504a"]):

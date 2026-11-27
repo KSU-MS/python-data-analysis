@@ -19,19 +19,21 @@ SKIDPAD_RADIUS = 9.125   # m, FSAE skidpad driven line (15.25 m inner circle + 3
 
 @dataclass
 class Path:
-    """A driven line: points (x, y) with arc length s and curvature k (1/m, + left)."""
+    """A driven line: points (x, y) with arc length s, heading (rad) and curvature k
+    (1/m, + left)."""
     x: np.ndarray
     y: np.ndarray
     closed: bool = False
     s: np.ndarray = field(init=False)
+    heading: np.ndarray = field(init=False)
     k: np.ndarray = field(init=False)
 
     def __post_init__(self):
         self.x, self.y = np.asarray(self.x, float), np.asarray(self.y, float)
         ds = np.hypot(np.diff(self.x), np.diff(self.y))
         self.s = np.concatenate([[0.0], np.cumsum(ds)])
-        heading = np.unwrap(np.arctan2(np.gradient(self.y), np.gradient(self.x)))
-        self.k = np.gradient(heading) / np.maximum(np.gradient(self.s), 1e-9)
+        self.heading = np.unwrap(np.arctan2(np.gradient(self.y), np.gradient(self.x)))
+        self.k = np.gradient(self.heading) / np.maximum(np.gradient(self.s), 1e-9)
 
     @property
     def length(self) -> float:
@@ -96,7 +98,13 @@ class ScriptedDriver:
 
 @dataclass
 class PathFollower:
-    """Pure pursuit steering on the path; speed control to a target speed.
+    """Path tracking steering; speed control to a target speed.
+
+    Steering: road wheel angle = wheelbase * path curvature (feedforward, previewed)
+    minus feedback on lateral offset (with a slow integral for the steady offset
+    understeer leaves), heading error, and yaw rate vs the path's. The yaw rate term
+    damps the car near the limit; pure pursuit, without it, set up yaw oscillations
+    that spun the car well inside its grip.
 
     Speed: a PI on speed error asks for an acceleration (within accel_max /
     brake_max), turned into pedal / brake by feedforward from the car's mass, drag
@@ -109,8 +117,11 @@ class PathFollower:
     path: Path
     speed: object
     car: Car = field(default_factory=Car)
-    lookahead_min: float = 3.0       # m
-    lookahead_time: float = 0.35     # s of travel
+    steer_preview: float = 0.15      # s of travel for the curvature feedforward
+    k_lateral: float = 0.08          # rad of road wheel per m off the path
+    k_lateral_i: float = 0.05        # rad per (m * s)
+    k_heading: float = 0.6           # rad per rad
+    k_yaw: float = 0.06              # rad per rad/s of yaw rate error
     speed_preview: float = 0.3       # s: aim for the lowest target speed this far ahead
     max_steering_wheel: float = math.radians(120)
     speed_kp: float = 2.0            # m/s^2 asked per m/s of speed error
@@ -122,6 +133,7 @@ class PathFollower:
     done: bool = False
     _i: int = 0
     _integral: float = 0.0
+    _lat_integral: float = 0.0
     _t_last: float | None = None
 
     def __post_init__(self):
@@ -138,20 +150,22 @@ class PathFollower:
         self._i = lo + int(np.argmin(d))
         if not p.closed and self._i >= len(p.s) - 2:
             self.done = True
-        ld = max(self.lookahead_min, self.lookahead_time * vx)
-        j = int(np.searchsorted(p.s, p.s[self._i] + ld))
-        j = j % len(p.s) if p.closed else min(j, len(p.s) - 1)
-        # pure pursuit: arc through the target point, rear axle reference
-        lr = self.car.front_weight * self.car.wheelbase
-        rx = X - lr * math.cos(psi)
-        ry = Y - lr * math.sin(psi)
-        eta = math.atan2(p.y[j] - ry, p.x[j] - rx) - psi
-        dist = math.hypot(p.x[j] - rx, p.y[j] - ry)
-        delta = math.atan2(2 * self.car.wheelbase * math.sin(eta), max(dist, 1e-3))
-        sw = max(-self.max_steering_wheel, min(self.max_steering_wheel, delta * self.car.steer_ratio))
-
         dt = 0.0 if self._t_last is None else t - self._t_last
         self._t_last = t
+        i = self._i
+        h = p.heading[i]
+        e_lat = -math.sin(h) * (X - p.x[i]) + math.cos(h) * (Y - p.y[i])    # + left of the line
+        e_head = (psi - h + math.pi) % (2 * math.pi) - math.pi
+        j = int(np.searchsorted(p.s, p.s[i] + self.steer_preview * vx))
+        j = j % len(p.s) if p.closed else min(j, len(p.s) - 1)
+        delta_ff = self.car.wheelbase * p.k[j]
+        fb = (self.k_lateral * e_lat + self.k_heading * e_head
+              + self.k_yaw * (obs["r"] - vx * p.k[i]) + self._lat_integral)
+        delta = delta_ff - fb
+        sw = delta * self.car.steer_ratio
+        if abs(sw) < self.max_steering_wheel:              # anti-windup
+            self._lat_integral += self.k_lateral_i * e_lat * dt
+        sw = max(-self.max_steering_wheel, min(self.max_steering_wheel, sw))
         k = int(np.searchsorted(p.s, p.s[self._i] + self.speed_preview * vx)) + 1
         err = float(self._v_target[self._i:max(k, self._i + 1)].min()) - vx
         a_des = self.speed_kp * err + self._integral
