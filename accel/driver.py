@@ -263,9 +263,12 @@ class DrsPolicy:
     min_pedal: open only while accelerating or holding speed.
     travel_time: s for the actuator to go fully open or closed.
     """
-    min_speed: float = 12.0
-    max_lateral: float = 0.3 * 9.81
-    max_steering_wheel: float = math.radians(180)
+    # defaults from accel.strategy on the Michigan 2026 endurance line (placeholder
+    # downforce): open from 8 m/s, close past 20 deg of steering; a lateral g limit
+    # never helped once steering closes the wing
+    min_speed: float = 8.0
+    max_lateral: float = 0.9 * 9.81
+    max_steering_wheel: float = math.radians(20)
     min_pedal: float = 0.05
     travel_time: float = 0.2
 

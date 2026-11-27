@@ -14,6 +14,7 @@ scripts for log analysis, motor curves and battery sims.
 - [Driving the car (double-track model)](#driving-the-car-double-track-model)
 - [Endurance and DRS](#endurance-and-drs)
 - [VCU controller (sim + car)](#vcu-controller-sim--car)
+- [Running jobs on another machine](#running-jobs-on-another-machine)
 - [Car data to collect](#car-data-to-collect)
 - [Visualization](#visualization)
 - [Repo layout](#repo-layout)
@@ -281,6 +282,34 @@ posts `python -m accel.report_diff base/metrics.json report/metrics.json` as a P
 
 The Rerun viewer sends anonymous usage stats by default (features used, not your data);
 `rerun analytics disable` turns that off.
+
+## Running jobs on another machine
+
+`accel/remote.py` runs a command on another machine (default the desktop's WSL,
+`desktop-17id03o-2` on Tailscale) on exactly your working tree, and copies results back:
+
+```sh
+python -m accel.remote setup        # once: checks git + nix, clones, builds the env
+python -m accel.remote run --fetch strategy -- python -m accel.strategy --regen --out strategy
+python -m accel.remote run --detach --fetch strategy -- python -m accel.strategy --out strategy
+python -m accel.remote log          # follow a detached job; then: fetch strategy
+```
+
+It snapshots tracked files including uncommitted edits (`git stash create`, your branch
+and stash untouched), pushes that over SSH, checks it out there and runs it in
+`nix develop` (`--uv` for `uv run`). Untracked files aren't sent. `--host` /
+`$ACCEL_REMOTE_HOST` and `--dir` / `$ACCEL_REMOTE_DIR` pick another machine or clone.
+
+The remote, once (Windows: WSL2 Ubuntu):
+
+1. `wsl --install`, then in WSL: Tailscale (or use the Windows host's), an SSH server
+   (`sudo apt install openssh-server && sudo service ssh start`), git, and Nix with
+   flakes (e.g. the Determinate Systems installer).
+2. From this machine: `ssh-copy-id <host>` so SSH works without a password (the tool
+   runs SSH non-interactively), then `python -m accel.remote setup`.
+
+Parallel jobs (`accel.strategy`, Monte Carlo) use all the remote's cores
+(`--workers`).
 
 ## Car data to collect
 

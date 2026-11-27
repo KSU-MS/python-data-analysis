@@ -112,7 +112,7 @@ def _candidate(row) -> dict:
     return {"margin": float(row.margin), "coast_time": float(row.coast_time), "drs": drs, "regen": regen}
 
 
-def tune(workers: int = 12, soc_floor: float = SOC_FLOOR, regen: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
+def tune(workers: int | None = None, soc_floor: float = SOC_FLOOR, regen: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
     """(every candidate scored, the picks confirmed by full events).
 
     regen: also search regen strategies (lift-off torque x brake blending, with and
@@ -169,7 +169,7 @@ def main():
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default="strategy")
-    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--workers", type=int, default=None, help="default: all cores")
     ap.add_argument("--regen", action="store_true", help="also search regen strategies")
     ap.add_argument("--soc-floor", type=float, default=SOC_FLOOR,
                     help="planning reserve: SOC the event must end above")
