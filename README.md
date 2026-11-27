@@ -12,6 +12,7 @@ scripts for log analysis, motor curves and battery sims.
 - [Quick start](#quick-start)
 - [Accel sim](#accel-sim)
 - [Driving the car (double-track model)](#driving-the-car-double-track-model)
+- [Endurance and DRS](#endurance-and-drs)
 - [VCU controller (sim + car)](#vcu-controller-sim--car)
 - [Visualization](#visualization)
 - [Repo layout](#repo-layout)
@@ -188,6 +189,29 @@ The envelope takes ~2 minutes and is cached in `build/envelope/`.
 steering it reproduces the accel model's times; the tests check steady cornering, left/right
 symmetry, pack charge and heat bookkeeping and the diff.
 
+## Endurance and DRS
+
+`accel/endurance.py` runs the FSAE endurance event on the double-track car: the official
+Michigan 2026 EV line (`tracks/`, from the fsae-ev-endurance-map repo; `accel/track.py`
+loads and smooths it, ~1.22 km), 18 laps in two stints with the 3 minute driver change
+(the pack cools toward ambient meanwhile), driven at a fraction of the grip envelope.
+The pack discharges and heats (I²R, passive cooling only) and its BMS undervoltage limit
+cuts power as it empties, so a car that uses too much energy slows and stops short.
+
+```sh
+python -m accel.endurance --out endurance.png              # baseline vs lift-and-coast
+python -m accel.endurance --aero notebook --out drs.png    # with a wing, + DRS
+```
+
+The summary has driving time, lap times, energy, drag energy, final SOC, pack
+temperature and heat, and whether it finished. `PathFollower(coast_time=...)` is
+lift-and-coast (lift when a braking zone is coming). DRS is a model input (wing position
+blending drag, downforce and aero balance between `Car`'s closed and `drs_*_open`
+values) driven by a `DrsPolicy` (open when fast, nearly straight, on the gas, not
+braking; actuator travel time). The `notebook` aero preset takes its drag from
+python-endurance-drag-energy-calculator's calc_drag.ipynb; its downforce numbers are
+placeholders.
+
 ## VCU controller (sim + car)
 
 `controller/` is the launch/traction controller as firmware-style C++ (no heap, no Arduino, time passed
@@ -246,6 +270,7 @@ The Rerun viewer sends anonymous usage stats by default (features used, not your
 | `tests/` | pytest suite |
 | `accel_sim.ipynb` | main accel notebook |
 | `motor.py`, `battery.py`, `tire/` | motor dq model, pack model, Pacejka tire fits (used by `accel/`) |
+| `tracks/` | track lines (GeoJSON): FSAE Michigan 2026 EV endurance |
 | `cardata/`, `olapsims/`, `dynoruns/` | logged car data, OptimumLap export, dyno pulls |
 | other `*.ipynb`, `*.py` | older log analysis, motor curve, battery and wiring scripts; many read logs from paths that aren't in the repo |
 | `pyproject.toml`, `uv.lock` | Python dependencies and their lock (uv) |

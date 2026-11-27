@@ -74,7 +74,8 @@ class Pack:
 
     def __init__(self, pack: battery.batteryPack, *, cell_mass: float = 0.27,
                  cell_heat_capacity: float = 1000.0, h_a: float = 15.0,
-                 ambient_c: float = 25.0, resistance_temp_coeff: float = 0.02):
+                 ambient_c: float = 25.0, resistance_temp_coeff: float = 0.02,
+                 v_cell_min: float = 3.0):
         """The thermal and state-of-charge terms are used by the double-track model
         (vehicle.py); the accel sim holds SOC and temperature constant.
 
@@ -82,6 +83,9 @@ class Pack:
         cell_heat_capacity: J/(kg K), ESTIMATE (typical Li-ion pouch).
         h_a: W/K from the pack to ambient. No active cooling; ESTIMATE.
         resistance_temp_coeff: R(T) = R * exp(-coeff * (T - 25 C)), ESTIMATE.
+        v_cell_min: V, loaded cell voltage the BMS won't go below (undervoltage
+            limit): current is limited to hold it, so a low pack loses power and an
+            empty one stops the car. ESTIMATE.
         """
         self.name = pack.name
         self.v_oc = pack.getInstantaneousVoltage(0)
@@ -97,6 +101,7 @@ class Pack:
         self.h_a = h_a
         self.ambient_c = ambient_c
         self.resistance_temp_coeff = resistance_temp_coeff
+        self.v_cell_min = v_cell_min
 
     def solve(self, power: float):
         """Bus (voltage, current) when drawing `power` W, honoring the current limit.

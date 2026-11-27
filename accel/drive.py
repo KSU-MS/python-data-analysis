@@ -32,7 +32,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
           pack: Pack | str = "cosmx600v", tire=None, controller=None, *, dt: float = 2e-4,
           t_max: float = 60.0, driver_period: float = 0.01, log_period: float = 0.01,
           vx0: float = 0.0, soc0: float = 1.0, pack_temp0: float | None = None,
-          relaxation_length: float = 0.15, relaxation_length_lat: float = 0.3) -> DriveResult:
+          relaxation_length: float = 0.15, relaxation_length_lat: float = 0.3,
+          drs=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0) -> DriveResult:
     """Run until the driver is done or t_max.
 
     The driver's pedal maps linearly to a torque request (0..motor peak), as the VCU's
@@ -40,6 +41,10 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     that into the inverter command, from per-wheel sensor edges, motor rpm and
     body-frame velocity / acceleration. Without one, the request goes straight to
     the inverter. Brake pedal maps to car.max_brake_torque, split by brake_bias_front.
+
+    drs: a DRS policy (e.g. driver.DrsPolicy), called with the driver's view and
+    inputs at the driver rate, returning the wing position it wants (0 closed, 1
+    open); the wing moves there at its actuator rate. None: wing closed.
     """
     car = car or Car()
     motor = MotorMap(motor) if isinstance(motor, str) else motor
@@ -51,7 +56,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
         motor, tire, pack,
         vehicle.params(car, motor, pack, tire, relaxation_length=relaxation_length,
                        relaxation_length_lat=relaxation_length_lat, dt=dt),
-        vehicle.initial_state(car, pack, vx=vx0, soc=soc0, pack_temp=pack_temp0))
+        vehicle.initial_state(car, pack, vx=vx0, soc=soc0, pack_temp=pack_temp0, X=X0, Y=Y0,
+                              psi=psi0))
 
     S, O = vehicle.STATES, vehicle.OUTPUTS
     iX, iY, ipsi, ivx, ivy, ir = (S.index(k) for k in ("X", "Y", "psi", "vx", "vy", "r"))
@@ -62,6 +68,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
 
     state, out = plant.state, [0.0] * len(O)
     pedal = brake = sw = 0.0
+    wing = wing_target = 0.0
+    wing_rate = dt / drs.travel_time if drs is not None else 0.0
     t, next_driver, next_log = 0.0, 0.0, 0.0
     rows = []
     for _ in range(int(t_max / dt)):
@@ -72,6 +80,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
             pedal, brake, sw = driver(t, obs)
             if driver.done:
                 break
+            if drs is not None:
+                wing_target = drs(obs, pedal, brake, sw)
         t_req = pedal * motor.peak_torque
         if controller is not None:
             omegas = [state[i] for i in iw]
@@ -80,14 +90,15 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
                                     out[itq], t_req)
         else:
             t_cmd = t_req
-        plant(t_cmd, sw / car.steer_ratio, brake * car.max_brake_torque)
+        wing += max(-wing_rate, min(wing_rate, wing_target - wing))
+        plant(t_cmd, sw / car.steer_ratio, brake * car.max_brake_torque, wing)
         if t >= next_log - 1e-12:
             next_log += log_period
-            rows.append([t, pedal, brake, sw, t_req, t_cmd, *state, *plant.out])
+            rows.append([t, pedal, brake, sw, wing, t_req, t_cmd, *state, *plant.out])
         state, out = plant.state, plant.out
         t += dt
 
-    df = pd.DataFrame(rows, columns=["t", "pedal", "brake", "steering_wheel", "torque_request",
+    df = pd.DataFrame(rows, columns=["t", "pedal", "brake", "steering_wheel", "drs", "torque_request",
                                      "torque_cmd", *S, *O])
     df["speed"] = np.hypot(df.vx, df.vy)
     df["beta"] = np.arctan2(df.vy, np.maximum(df.vx, 0.1))       # body slip angle

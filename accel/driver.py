@@ -30,14 +30,41 @@ class Path:
 
     def __post_init__(self):
         self.x, self.y = np.asarray(self.x, float), np.asarray(self.y, float)
-        ds = np.hypot(np.diff(self.x), np.diff(self.y))
-        self.s = np.concatenate([[0.0], np.cumsum(ds)])
-        self.heading = np.unwrap(np.arctan2(np.gradient(self.y), np.gradient(self.x)))
-        self.k = np.gradient(self.heading) / np.maximum(np.gradient(self.s), 1e-9)
+        if self.closed:
+            # a loop: the last point connects back to the first (don't repeat it)
+            if np.hypot(self.x[-1] - self.x[0], self.y[-1] - self.y[0]) < 1e-6:
+                self.x, self.y = self.x[:-1], self.y[:-1]
+            dx = 0.5 * (np.roll(self.x, -1) - np.roll(self.x, 1))
+            dy = 0.5 * (np.roll(self.y, -1) - np.roll(self.y, 1))
+            ds = np.hypot(np.diff(self.x, append=self.x[0]), np.diff(self.y, append=self.y[0]))
+            self._length = float(ds.sum())
+            self.s = np.concatenate([[0.0], np.cumsum(ds[:-1])])
+            self.heading = np.unwrap(np.arctan2(dy, dx))
+            dh = (np.roll(self.heading, -1) - np.roll(self.heading, 1) + np.pi) % (2 * np.pi) - np.pi
+            self.k = 0.5 * dh / np.maximum(np.hypot(dx, dy), 1e-9)
+        else:
+            ds = np.hypot(np.diff(self.x), np.diff(self.y))
+            self.s = np.concatenate([[0.0], np.cumsum(ds)])
+            self._length = float(self.s[-1])
+            self.heading = np.unwrap(np.arctan2(np.gradient(self.y), np.gradient(self.x)))
+            self.k = np.gradient(self.heading) / np.maximum(np.gradient(self.s), 1e-9)
 
     @property
     def length(self) -> float:
-        return float(self.s[-1])
+        return self._length
+
+    def ahead(self, i: int, dist: float) -> int:
+        """Index of the point `dist` metres past point i (wrapping on a loop)."""
+        if self.closed:
+            rem = (self.s[i] + dist) % self._length
+            return int(np.searchsorted(self.s, rem)) % len(self.s)
+        return min(int(np.searchsorted(self.s, self.s[i] + dist)), len(self.s) - 1)
+
+    def span(self, i: int, j: int) -> np.ndarray:
+        """Indices from i to j inclusive, going forward (wrapping on a loop)."""
+        if j >= i:
+            return np.arange(i, j + 1)
+        return np.concatenate([np.arange(i, len(self.s)), np.arange(0, j + 1)])
 
     @staticmethod
     def from_segments(segments, start=(0.0, 0.0), heading=0.0, step=0.25, closed=False):
@@ -106,13 +133,19 @@ class PathFollower:
     damps the car near the limit; pure pursuit, without it, set up yaw oscillations
     that spun the car well inside its grip.
 
-    Speed: a PI on speed error asks for an acceleration (within accel_max /
+    Speed: the target profile's own acceleration (v dv/ds, so braking zones start on
+    time) plus a PI on speed error give an acceleration (within accel_max /
     brake_max), turned into pedal / brake by feedforward from the car's mass, drag
-    and gearing. Like a driver, it lifts when the car slides (body slip angle past
-    slide_lift), which is the only traction control it has.
+    and gearing. Like a driver, it lifts when the rear slides (rear axle slip angle
+    past slide_lift; not body slip, which is large in a tight slow corner without any
+    sliding), which is the only traction control it has.
 
     speed: target speed per path point, or a constant (m/s).
-    Finishes (`done`) at the end of an open path.
+    laps: on a closed path, finish (`done`) after this many laps from the start
+        point; an open path finishes at its end. `laps_done` counts them.
+    coast_time: lift-and-coast. When the speed target drops within this many
+        seconds ahead (a braking zone coming), lift off instead of holding speed;
+        brakes still come on when needed. 0 = no coasting.
     """
     path: Path
     speed: object
@@ -125,12 +158,19 @@ class PathFollower:
     speed_preview: float = 0.3       # s: aim for the lowest target speed this far ahead
     max_steering_wheel: float = math.radians(120)
     speed_kp: float = 2.0            # m/s^2 asked per m/s of speed error
-    speed_ki: float = 0.5            # m/s^2 per (m/s * s)
+    # integral, only where the target is steady (|profile accel| < 0.5 m/s^2): it
+    # takes up cornering drag the feedforward doesn't model, without winding up
+    # through braking zones (which left the car slow into every corner)
+    speed_ki: float = 1.0            # m/s^2 per (m/s * s)
     accel_max: float = 6.0           # m/s^2
-    brake_max: float = 12.0          # m/s^2
+    brake_max: float = 16.0          # m/s^2
     peak_torque: float = 230.0       # Nm at full pedal (the VCU pedal map)
-    slide_lift: tuple = (math.radians(4), math.radians(10))   # body slip: start lifting, fully off
+    slide_lift: tuple = (math.radians(7), math.radians(12))   # rear slip angle: start lifting, fully off
+    laps: int | None = None
+    coast_time: float = 0.0
     done: bool = False
+    laps_done: int = 0
+    lap_times: list = field(default_factory=list)   # t at each start/finish crossing
     _i: int = 0
     _integral: float = 0.0
     _lat_integral: float = 0.0
@@ -140,15 +180,26 @@ class PathFollower:
         n = len(self.path.s)
         self._v_target = (np.full(n, float(self.speed)) if np.isscalar(self.speed)
                           else np.asarray(self.speed, float))
+        v = self._v_target
+        nxt = np.roll(v, -1) if self.path.closed else np.append(v[1:], v[-1])
+        ds = np.diff(self.path.s, append=self.path.s[0] + self.path.length if self.path.closed
+                     else self.path.s[-1] + 1.0)
+        self._a_target = (nxt ** 2 - v ** 2) / (2 * np.maximum(ds, 1e-6))
 
     def __call__(self, t, obs):
         p = self.path
         X, Y, psi, vx = obs["X"], obs["Y"], obs["psi"], obs["vx"]
         # nearest point, searching forward from the last one
-        lo, hi = self._i, min(self._i + 200, len(p.s))
-        d = np.hypot(p.x[lo:hi] - X, p.y[lo:hi] - Y)
-        self._i = lo + int(np.argmin(d))
-        if not p.closed and self._i >= len(p.s) - 2:
+        n = len(p.s)
+        idx = (self._i + np.arange(200)) % n if p.closed else np.arange(self._i, min(self._i + 200, n))
+        new = int(idx[np.argmin(np.hypot(p.x[idx] - X, p.y[idx] - Y))])
+        if p.closed and new < self._i - n // 2:
+            self.laps_done += 1
+            self.lap_times.append(t)
+            if self.laps is not None and self.laps_done >= self.laps:
+                self.done = True
+        self._i = new
+        if not p.closed and self._i >= n - 2:
             self.done = True
         dt = 0.0 if self._t_last is None else t - self._t_last
         self._t_last = t
@@ -156,8 +207,7 @@ class PathFollower:
         h = p.heading[i]
         e_lat = -math.sin(h) * (X - p.x[i]) + math.cos(h) * (Y - p.y[i])    # + left of the line
         e_head = (psi - h + math.pi) % (2 * math.pi) - math.pi
-        j = int(np.searchsorted(p.s, p.s[i] + self.steer_preview * vx))
-        j = j % len(p.s) if p.closed else min(j, len(p.s) - 1)
+        j = p.ahead(i, self.steer_preview * vx)
         delta_ff = self.car.wheelbase * p.k[j]
         fb = (self.k_lateral * e_lat + self.k_heading * e_head
               + self.k_yaw * (obs["r"] - vx * p.k[i]) + self._lat_integral)
@@ -166,19 +216,47 @@ class PathFollower:
         if abs(sw) < self.max_steering_wheel:              # anti-windup
             self._lat_integral += self.k_lateral_i * e_lat * dt
         sw = max(-self.max_steering_wheel, min(self.max_steering_wheel, sw))
-        k = int(np.searchsorted(p.s, p.s[self._i] + self.speed_preview * vx)) + 1
-        err = float(self._v_target[self._i:max(k, self._i + 1)].min()) - vx
-        a_des = self.speed_kp * err + self._integral
-        if -self.brake_max < a_des < self.accel_max:     # anti-windup
-            self._integral += self.speed_ki * err * dt
-        a_des = min(max(self.speed_kp * err + self._integral, -self.brake_max), self.accel_max)
+        window = p.span(i, p.ahead(i, self.speed_preview * vx))
+        target = float(self._v_target[window].min())
+        a_ff = float(self._a_target[window[-1]])
+        err = target - vx
+        a_des = a_ff + self.speed_kp * err + self._integral
+        if abs(a_ff) < 0.5 and -self.brake_max < a_des < self.accel_max:
+            self._integral = min(max(self._integral + self.speed_ki * err * dt, -2.0), 4.0)
+        a_des = min(max(a_ff + self.speed_kp * err + self._integral, -self.brake_max), self.accel_max)
 
         c = self.car
         resist = c.drag(vx) + c.crr * c.total_load(vx)
         force = c.mass * a_des + resist
         pedal = max(0.0, force * c.tire_radius / (c.final_drive * c.driveline_eff * self.peak_torque))
         brake = max(0.0, -force * c.tire_radius / c.max_brake_torque)
-        beta = abs(math.atan2(obs["vy"], max(vx, 0.5)))
+        lr = c.front_weight * c.wheelbase
+        rear_slip = abs(math.atan2(obs["vy"] - obs["r"] * lr, max(vx, 0.5)))
         lo, hi = self.slide_lift
-        pedal *= min(1.0, max(0.0, (hi - beta) / (hi - lo)))
+        pedal *= min(1.0, max(0.0, (hi - rear_slip) / (hi - lo)))
+        if self.coast_time > 0:
+            ahead = self._v_target[p.span(i, p.ahead(i, self.coast_time * vx))]
+            if ahead.min() < min(target, vx) - 0.5:
+                pedal = 0.0
         return min(pedal, 1.0), min(brake, 1.0), sw
+
+
+@dataclass
+class DrsPolicy:
+    """When to open the wing: on the gas, nearly straight and fast enough; closed
+    whenever braking or cornering. Called by drive() at the driver rate.
+
+    min_speed: m/s (the old calc_drag notebook opened above 20 m/s).
+    max_lateral: m/s^2; above this the car needs the downforce.
+    min_pedal: open only while accelerating or holding speed.
+    travel_time: s for the actuator to go fully open or closed.
+    """
+    min_speed: float = 12.0
+    max_lateral: float = 0.3 * 9.81
+    min_pedal: float = 0.05
+    travel_time: float = 0.2
+
+    def __call__(self, obs, pedal, brake, steering_wheel) -> float:
+        open_ = (obs["vx"] > self.min_speed and abs(obs["ay"]) < self.max_lateral
+                 and pedal >= self.min_pedal and brake == 0)
+        return 1.0 if open_ else 0.0

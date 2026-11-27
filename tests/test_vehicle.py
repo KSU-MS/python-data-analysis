@@ -40,7 +40,7 @@ def test_compiled_step_matches_casadi(motor, pack):
         for k, lo, hi in [("vy", -1, 1), ("r", -1.5, 1.5), ("kappa_rl", -0.2, 1), ("kappa_rr", -0.2, 1),
                           ("alpha_fl", -0.2, 0.2), ("alpha_rr", -0.2, 0.2), ("ay_filt", -12, 12)]:
             s[vehicle.STATES.index(k)] = rng.uniform(lo, hi)
-        u = [rng.uniform(0, 230), rng.uniform(-0.3, 0.3), rng.uniform(0, 800)]
+        u = [rng.uniform(0, 230), rng.uniform(-0.3, 0.3), rng.uniform(0, 800), rng.uniform(0, 1)]
         st = vehicle.car_step(motor, tire, pack, p, s)
         st(*u)
         nxt, out = f(s, u, p)

@@ -22,10 +22,12 @@ Body frame: x forward, y left, yaw counter-clockwise. Wheels FL, FR, RL, RR.
                   open-circuit voltage from its state of charge and its resistance
                   from its temperature
     pack          dSOC/dt = -I / capacity;  C dT/dt = I^2 R(T) - hA (T - ambient)
-                  (no active cooling)
+                  (no active cooling); current limited to hold the loaded cells at
+                  the BMS undervoltage limit
 
 Inputs per step: motor torque command (Nm), road wheel steer angle (rad, + left),
-total brake torque at the wheels (Nm).
+total brake torque at the wheels (Nm), DRS wing position (0 closed .. 1 open: drag,
+downforce and aero balance blend between Car's closed and drs_*_open values).
 """
 from pathlib import Path
 
@@ -40,7 +42,7 @@ WHEELS = ("fl", "fr", "rl", "rr")
 STATES = (["X", "Y", "psi", "vx", "vy", "r"] + [f"omega_{w}" for w in WHEELS]
           + [f"kappa_{w}" for w in WHEELS] + [f"alpha_{w}" for w in WHEELS]
           + ["ax_filt", "ay_filt", "t_lagged", "bus_v", "soc", "pack_temp"])
-INPUTS = ["torque_cmd", "steer", "brake_torque"]
+INPUTS = ["torque_cmd", "steer", "brake_torque", "drs"]
 OUTPUTS = (["ax", "ay"] + [f"fx_{w}" for w in WHEELS] + [f"fy_{w}" for w in WHEELS]
            + [f"fz_{w}" for w in WHEELS]
            + ["motor_torque", "bus_i", "motor_rpm", "drag", "diff_torque", "pack_heat",
@@ -50,23 +52,27 @@ CAR_PARAMS = ["mass", "cg_height", "wheelbase", "front_weight", "tire_radius", "
               "wheel_inertia", "rear_driveline_inertia", "pitch_tau", "roll_tau", "torque_tau",
               "power_limit", "track_front", "track_rear", "yaw_inertia", "roll_stiffness_front",
               "diff_preload", "diff_lock_drive", "diff_lock_coast", "diff_slip_eps",
-              "brake_bias_front"]
+              "brake_bias_front", "drs_cda_open", "drs_cla_open", "drs_aero_front_open"]
 PARAMS = CAR_PARAMS + ["relaxation_length", "relaxation_length_lat", "tire_scale",
                        "rotor_inertia", "pack_series", "pack_capacity_ah", "pack_resistance_25c",
                        "pack_max_current", "pack_thermal_mass", "pack_h_a", "pack_ambient_c",
-                       "pack_resistance_temp_coeff", "dt"]
+                       "pack_resistance_temp_coeff", "pack_v_cell_min", "dt"]
 BRAKE_EPS = 2.0   # rad/s, brake torque fades to 0 on a stopped wheel (numerical)
 
 
 def params(car: Car, motor: MotorMap, pack: Pack, tire, *, relaxation_length: float = 0.15,
            relaxation_length_lat: float = 0.3, dt: float = 2e-4) -> np.ndarray:
     p = {k: getattr(car, k) for k in CAR_PARAMS}
+    for k in ("cda", "cla", "aero_front"):       # no DRS: open = closed
+        if p[f"drs_{k}_open"] is None:
+            p[f"drs_{k}_open"] = p[k]
     p.update(relaxation_length=relaxation_length, relaxation_length_lat=relaxation_length_lat,
              tire_scale=tire.scale, rotor_inertia=motor.rotor_inertia, pack_series=pack.series,
              pack_capacity_ah=pack.capacity_ah, pack_resistance_25c=pack.resistance,
              pack_max_current=pack.max_current, pack_thermal_mass=pack.thermal_mass,
              pack_h_a=pack.h_a, pack_ambient_c=pack.ambient_c,
-             pack_resistance_temp_coeff=pack.resistance_temp_coeff, dt=dt)
+             pack_resistance_temp_coeff=pack.resistance_temp_coeff, pack_v_cell_min=pack.v_cell_min,
+             dt=dt)
     return np.array([p[k] for k in PARAMS], dtype=float)
 
 
@@ -91,7 +97,7 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
     pv = ca.SX.sym("params", len(PARAMS))
     x = {k: s[i] for i, k in enumerate(STATES)}
     p = {k: pv[i] for i, k in enumerate(PARAMS)}
-    t_cmd, steer, brake = u[0], u[1], u[2]
+    t_cmd, steer, brake, drs = u[0], u[1], u[2], _clamp(u[3], 0, 1)
     dt, r_t, gr, m = p["dt"], p["tire_radius"], p["final_drive"], p["mass"]
     vx, vy, yaw_rate = x["vx"], x["vy"], x["r"]
 
@@ -101,15 +107,20 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
            "rl": (-lr, p["track_rear"] / 2), "rr": (-lr, -p["track_rear"] / 2)}
     delta = {"fl": steer, "fr": steer, "rl": 0, "rr": 0}
 
+    # --- aero, between closed and open wing
+    cla = p["cla"] + drs * (p["drs_cla_open"] - p["cla"])
+    cda = p["cda"] + drs * (p["drs_cda_open"] - p["cda"])
+    aero_front = p["aero_front"] + drs * (p["drs_aero_front_open"] - p["aero_front"])
+
     # --- normal loads
     q = 0.5 * p["rho"] * vx * vx
-    down = q * p["cla"]
+    down = q * cla
     long_tr = m * x["ax_filt"] * p["cg_height"] / p["wheelbase"]       # to the rear axle
     lat = m * x["ay_filt"] * p["cg_height"]                            # roll moment
     lat_f = lat * p["roll_stiffness_front"] / p["track_front"]         # left -> right
     lat_r = lat * (1 - p["roll_stiffness_front"]) / p["track_rear"]
-    front_axle = m * G * lr / p["wheelbase"] - long_tr + down * p["aero_front"]
-    rear_axle = m * G * lf / p["wheelbase"] + long_tr + down * (1 - p["aero_front"])
+    front_axle = m * G * lr / p["wheelbase"] - long_tr + down * aero_front
+    rear_axle = m * G * lf / p["wheelbase"] + long_tr + down * (1 - aero_front)
     fz = {"fl": front_axle / 2 - lat_f, "fr": front_axle / 2 + lat_f,
           "rl": rear_axle / 2 - lat_r, "rr": rear_axle / 2 + lat_r}
     fz = {w: ca.fmax(f, 0) for w, f in fz.items()}
@@ -129,7 +140,10 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
     ocv = ca.interpolant("ocv", "linear", [pack.ocv_soc], pack.ocv_cell)
     v_oc = p["pack_series"] * ocv(_clamp(x["soc"], 0, 1))
     r_pack = p["pack_resistance_25c"] * ca.exp(-p["pack_resistance_temp_coeff"] * (x["pack_temp"] - 25))
-    pp = dict(p, pack_v_oc=v_oc, pack_resistance=r_pack)
+    # BMS undervoltage: no more current than holds the loaded cells at v_cell_min
+    i_limit = ca.fmin(p["pack_max_current"],
+                      ca.fmax((v_oc - p["pack_series"] * p["pack_v_cell_min"]) / r_pack, 0))
+    pp = dict(p, pack_v_oc=v_oc, pack_resistance=r_pack, pack_max_current=i_limit)
     omega_c = 0.5 * (x["omega_rl"] + x["omega_rr"])                  # diff carrier
     omega_m = omega_c * gr
     torque, bus_v, current = model._powertrain(pp, model._motor_max_torque(motor), t_lagged,
@@ -156,7 +170,7 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
 
     # --- chassis
     fz_tot = m * G + down
-    drag = q * p["cda"]
+    drag = q * cda
     rolling = p["crr"] * fz_tot * ca.tanh(vx / 0.1)
     fx_tot = sum(fxb.values()) - drag - rolling
     fy_tot = sum(fyb.values())

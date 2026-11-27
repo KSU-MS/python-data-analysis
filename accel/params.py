@@ -56,6 +56,12 @@ class Car:
     brake_bias_front: float = 0.65  # front share of brake torque, ESTIMATE
     max_brake_torque: float = 1500.0  # Nm summed over the wheels at full pedal, ESTIMATE
 
+    # drag reduction system: aero with the wing open. None = same as closed (no DRS).
+    # cda / cla / aero_front above are the closed (normal) wing.
+    drs_cda_open: float | None = None
+    drs_cla_open: float | None = None
+    drs_aero_front_open: float | None = None
+
     @property
     def cg_to_front(self) -> float:
         """Distance from the front axle to the CG ("b")."""
