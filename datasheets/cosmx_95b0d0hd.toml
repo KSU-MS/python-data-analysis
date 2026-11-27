@@ -1,0 +1,35 @@
+# COSMX 95B0D0HD 13 Ah pouch cell (NCM523 + graphite), from the manufacturer's sheet:
+# cosmx_95b0d0hd_13ah.png. The accumulator is 144s1p. Read by accel/powertrain.py.
+
+model = "95B0D0HD"
+chemistry = "NCM523+Gr"
+dimensions_mm = [9.5, 110, 130]          # max T x W x H
+mass_kg = 0.269                          # "<= 269 g"
+
+nominal_voltage = 3.73                   # V
+capacity_ah = 13.0
+voltage_min = 3.0                        # V, voltage range 3.0-4.28
+voltage_max = 4.28                       # V
+
+[discharge]
+continuous_a = 149.5                     # 11.5C max (min 6.5 A, 0.5C)
+peak_a = 325.0                           # 25C for 2 s, 50% SOC, 25 C, to 3.0 V
+peak_s = 2.0
+peak_deep_a = 468.0                      # 36C for 2 s, 50% SOC, 25 C, to 2.8 V
+# "Peak discharge current for 10 s is to be confirmed"
+
+[charge]
+continuous_a = 65.0                      # 5C max (min 6.5 A, 0.5C)
+peak_a = 234.0                           # 18C for 2 s, 50% SOC, 25 C
+peak_s = 2.0
+
+[resistance]                             # ohms
+acir = 0.002                             # "<= 2 mOhm"
+dcir_low_rate = 0.005                    # "<= 5 mOhm", 90% SOC, 25 C, 0.5C 10 s
+dcir_high_rate = 0.0015                  # "<= 1.5 mOhm", 90% SOC, 25 C, 30C 10 s
+
+[temperature_max_c]
+charge_continuous = 55
+charge_intermittent = 60
+discharge_continuous = 45
+discharge_intermittent = 70

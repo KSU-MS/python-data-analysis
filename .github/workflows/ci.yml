@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # the accel sim diff comment
+      issues: write         # PR comments go through the issues API
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      # builds controller/ natively and runs it in the loop with the sim
+      - name: Sim and controller tests
+        run: nix develop -c pytest -q tests
+
+      - name: Notebook runs end to end
+        run: nix develop -c jupyter nbconvert --to notebook --execute accel_sim.ipynb --output-dir "$RUNNER_TEMP"
+
+      # drag race GIF + plots as an artifact; tables and charts on the run's summary page
+      - name: Sim report
+        run: |
+          nix develop -c python -m accel.report --out report
+          cat report/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sim report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accel-report
+          path: report/
+
+      # pull requests: run the base branch's report too and diff the metrics
+      - name: Compare with base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git fetch --depth 1 origin "$BASE_SHA"
+          git worktree add "$RUNNER_TEMP/base" "$BASE_SHA"
+          # base code in the PR's environment; a base without metrics.json is handled
+          nix develop -c sh -c 'cd "$RUNNER_TEMP/base" && PYTHONPATH=$PWD python -m accel.report --out "$RUNNER_TEMP/base-report"' || true
+          nix develop -c python -m accel.report_diff "$RUNNER_TEMP/base-report/metrics.json" \
+            report/metrics.json --artifact-url "$RUN_URL" > "$RUNNER_TEMP/diff.md"
+          cat "$RUNNER_TEMP/diff.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # one comment per PR, updated on each push. Fork PRs get a read-only token,
+      # so this can fail there; the diff is still on the run's summary page.
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- accel-report-diff -->")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$RUNNER_TEMP/diff.md"
+          else
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/diff.md"
+          fi
+
+  # the non-Nix setup from the README: plain uv against the same uv.lock
+  uv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Sync and test
+        run: |
+          uv sync --locked
+          uv run pytest -q
+
+  controller-teensy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      # same controller sources, cross-compiled for the VCU's Cortex-M7 with
+      # -Werror -Wdouble-promotion (single-precision FPU)
+      - name: Cross-compile controller for Teensy 4.1
+        run: nix develop .#firmware -c make -C controller teensy

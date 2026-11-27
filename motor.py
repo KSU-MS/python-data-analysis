@@ -4,7 +4,6 @@ import math
 import pandas as pd
 import warnings
 warnings.simplefilter(action='ignore',category=pd.errors.PerformanceWarning)
-warnings.simplefilter(action='ignore',category=pd.errors.SettingWithCopyWarning)
 
 class Motor:
     def __init__(self, name):

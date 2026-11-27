@@ -1,2 +1,9 @@
 *.pyc
 *.log
+.direnv/
+__pycache__/
+.ipynb_checkpoints/
+controller/build/
+build/
+.venv/
+report/

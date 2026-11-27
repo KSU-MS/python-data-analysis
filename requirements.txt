@@ -1,8 +1,0 @@
-cantools
-numpy
-pandas
-pyserial
-PySimpleGUI
-Requests
-scipy
-pyinstaller
