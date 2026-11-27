@@ -34,7 +34,7 @@ def test_compiled_step_matches_casadi(motor, pack, tire):
                       rng.uniform(450, 600)])
         s[rng.integers(0, 3)] = 0.0
         cmd = rng.uniform(0, 230)
-        st = model.CompiledStep(motor, tire, p, s)
+        st = model.accel_step(motor, tire, p, s)
         st(cmd)
         nxt, out = f(s, cmd, p)
         np.testing.assert_allclose(st.state, np.array(nxt).ravel(), rtol=1e-12, atol=1e-12)

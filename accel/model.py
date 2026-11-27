@@ -6,7 +6,7 @@ One step of the semi-implicit Euler integration is written symbolically, once:
 
 and used two ways:
 
-- `CompiledStep`: CasADi generates C for the step, compiled once per (motor, tire
+- `accel_step()` / `CompiledStep`: CasADi generates C for the step, compiled once per (motor, tire
   shape) and called through ctypes, for `simulate()`'s loop with traction control or
   the VCU controller in it. (Calling a CasADi Function from Python costs ~20 us,
   four times a whole Python step; the compiled step costs ~1 us.)
@@ -162,29 +162,33 @@ _compiled: dict = {}
 
 
 class CompiledStep:
-    """step_function compiled to C and called through ctypes, for simulate()'s loop.
+    """A step Function (state, inputs, params) -> (next state, outputs), compiled to
+    C and called through ctypes. Owns the state, so a loop only passes inputs:
 
-    Owns the state, so the loop only passes the torque command:
+        st = accel_step(motor, tire, param_vector, initial_state(pack))
+        st.state        # state values before the step
+        st(torque_cmd)  # advance one step; st.out holds that step's outputs
 
-        st = CompiledStep(motor, tire, param_vector, initial_state(pack))
-        st.state        # list of STATES values before the step
-        st(torque_cmd)  # advance one step; st.out holds OUTPUTS for that step
+    name: the CasADi Function's name (the C symbol). make_fn: builds the Function,
+    only called on a cache miss. key: identifies the model in memory; sources: files
+    whose contents (with key) identify the generated code on disk.
     """
 
-    def __init__(self, motor: MotorMap, tire, param_vector, state0):
-        b = _build(motor, tire)
+    def __init__(self, name: str, make_fn, key: tuple, sources: list, n_inputs: int,
+                 n_outputs: int, param_vector, state0):
+        b = _build(name, make_fn, key, sources)
         n_arg, n_res, n_iw, n_w = b.sizes
         self._fn = b.fn
-        self._bufs = [(ctypes.c_double * len(STATES))(*state0),
-                      (ctypes.c_double * len(STATES))()]
-        self._cmd = ctypes.c_double(0.0)
-        self._p = (ctypes.c_double * len(PARAMS))(*param_vector)
-        self._out = (ctypes.c_double * len(OUTPUTS))()
+        n = len(state0)
+        self._bufs = [(ctypes.c_double * n)(*state0), (ctypes.c_double * n)()]
+        self._u = (ctypes.c_double * n_inputs)()
+        self._p = (ctypes.c_double * len(param_vector))(*param_vector)
+        self._out = (ctypes.c_double * n_outputs)()
         self._arg = (ctypes.c_void_p * max(n_arg, 3))()
         self._res = (ctypes.c_void_p * max(n_res, 2))()
         self._iw = (ctypes.c_longlong * max(n_iw, 1))()
         self._w = (ctypes.c_double * max(n_w, 1))()
-        self._arg[1] = ctypes.addressof(self._cmd)
+        self._arg[1] = ctypes.addressof(self._u)
         self._arg[2] = ctypes.addressof(self._p)
         self._res[1] = ctypes.addressof(self._out)
         self._cur = 0
@@ -202,47 +206,67 @@ class CompiledStep:
     def out(self) -> list:
         return self._out[:]
 
-    def __call__(self, torque_cmd: float):
-        self._cmd.value = torque_cmd
+    def __call__(self, *inputs: float):
+        u = self._u
+        for i, x in enumerate(inputs):
+            u[i] = x
         if self._fn(self._arg, self._res, self._iw, self._w, 0):
-            raise RuntimeError("accel_step failed")
+            raise RuntimeError("compiled step failed")
         self._cur = 1 - self._cur
         self._wire()
 
 
-def _build(motor: MotorMap, tire) -> _Built:
-    """Generate C for the step, compile it and load it. Cached in memory per (motor,
-    tire shape) and on disk by everything the generated code depends on."""
-    model_key = (motor.name, motor.rpm_step, motor.v_min, motor.v_step, tire.table_key())
-    if model_key in _compiled:
-        return _compiled[model_key]
-    h = hashlib.sha1(repr(model_key).encode())
-    h.update(np.array(motor.table).tobytes())
+def accel_step(motor: MotorMap, tire, param_vector, state0) -> CompiledStep:
+    """step_function, compiled, for simulate()'s loop."""
+    return CompiledStep("accel_step", lambda: step_function(motor, tire),
+                        _motor_key(motor) + (tire.table_key(),),
+                        [Path(__file__), Path(__file__).with_name("tire.py")],
+                        1, len(OUTPUTS), param_vector, state0)
+
+
+def _motor_key(motor: MotorMap) -> tuple:
+    return (motor.name, motor.rpm_step, motor.v_min, motor.v_step,
+            _hash_arrays(np.array(motor.table)))
+
+
+def _hash_arrays(*arrays) -> str:
+    h = hashlib.sha1()
+    for a in arrays:
+        h.update(np.ascontiguousarray(a, dtype=float).tobytes())
+    return h.hexdigest()[:16]
+
+
+def _build(name: str, make_fn, key: tuple, sources: list) -> _Built:
+    """Generate C, compile it and load it. Cached in memory by key, and on disk by
+    key, the sources and the CasADi version."""
+    if (name, key) in _compiled:
+        return _compiled[name, key]
+    h = hashlib.sha1(repr((name, key)).encode())
     h.update(ca.__version__.encode())
-    for src in (Path(__file__), Path(__file__).with_name("tire.py")):
-        h.update(src.read_bytes())
-    key = h.hexdigest()[:16]
+    for src in sources:
+        h.update(Path(src).read_bytes())
+    digest = h.hexdigest()[:16]
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    so = BUILD_DIR / f"accel_step_{key}.so"
+    so = BUILD_DIR / f"{name}_{digest}.so"
     if not so.exists():
-        cg = ca.CodeGenerator("accel_step.c", {"casadi_int": "long long int"})
-        cg.add(step_function(motor, tire))
-        c = BUILD_DIR / f"accel_step_{key}.c"
+        cg = ca.CodeGenerator(f"{name}.c", {"casadi_int": "long long int"})
+        cg.add(make_fn())
+        c = BUILD_DIR / f"{name}_{digest}.c"
         c.write_text(cg.dump())
         tmp = so.with_suffix(f".{np.random.randint(1 << 30)}.tmp")
         subprocess.run(["cc", "-O2", "-fPIC", "-shared", "-o", str(tmp), str(c), "-lm"],
                        check=True)
         tmp.replace(so)   # atomic, for parallel test workers
     lib = ctypes.CDLL(str(so))
-    fn = lib.accel_step
+    fn = getattr(lib, name)
     fn.restype = ctypes.c_int
     fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int]
-    work = lib.accel_step_work
+    work = getattr(lib, f"{name}_work")
     work.restype = ctypes.c_int
     sz = [ctypes.c_longlong() for _ in range(4)]
     work(*[ctypes.byref(z) for z in sz])
     built = _Built(lib, fn, tuple(z.value for z in sz))
-    _compiled[model_key] = built
+    _compiled[name, key] = built
     return built
 
 

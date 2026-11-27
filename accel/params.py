@@ -35,6 +35,27 @@ class Car:
 
     power_limit: float = 80e3       # W at the accumulator (FSAE EV rule)
 
+    # --- double-track (vehicle.py) only ---
+    track_front: float = 1.22       # m, ESTIMATE
+    track_rear: float = 1.20        # m, ESTIMATE
+    yaw_inertia: float = 110.0      # kg m^2 about the CG, with driver, ESTIMATE
+    roll_stiffness_front: float = 0.5   # front share of lateral load transfer, ESTIMATE
+    roll_tau: float = 0.05          # s, lag on lateral load transfer (roll), ESTIMATE
+    steer_ratio: float = 4.5        # steering wheel angle / road wheel angle, ESTIMATE
+
+    # Drexler FSAE limited slip (clutch pack, ramp angles + preload, adjustable).
+    # Locking torque = preload + lock * |input torque| in drive (lock_coast off
+    # throttle); a bias ratio TBR is lock = (TBR - 1) / (TBR + 1). ESTIMATE all.
+    diff_preload: float = 15.0      # Nm across the clutches
+    diff_lock_drive: float = 0.4
+    diff_lock_coast: float = 0.3
+    # numerical: the clutches stick below this wheel speed difference. Too small
+    # makes the step stiff at dt = 0.2 ms; 2 rad/s is ~0.5 m/s at the tire.
+    diff_slip_eps: float = 2.0      # rad/s
+
+    brake_bias_front: float = 0.65  # front share of brake torque, ESTIMATE
+    max_brake_torque: float = 1500.0  # Nm summed over the wheels at full pedal, ESTIMATE
+
     @property
     def cg_to_front(self) -> float:
         """Distance from the front axle to the CG ("b")."""

@@ -11,6 +11,7 @@ scripts for log analysis, motor curves and battery sims.
   - [Without Nix (Linux, macOS, Windows/WSL)](#without-nix-linux-macos-windowswsl)
 - [Quick start](#quick-start)
 - [Accel sim](#accel-sim)
+- [Driving the car (double-track model)](#driving-the-car-double-track-model)
 - [VCU controller (sim + car)](#vcu-controller-sim--car)
 - [Visualization](#visualization)
 - [Repo layout](#repo-layout)
@@ -152,6 +153,33 @@ LC0 Pacejka tire.
   logging) and `quasi_static` (ideal-TC bound, the joe-accel model).
 - `compare.py`: reference data (OptimumLap run, KS5e launch logs) and matching sim setups;
   the validation plots are in `accel_sim.ipynb`.
+
+## Driving the car (double-track model)
+
+`accel/vehicle.py` is the whole car in four wheels, written in CasADi and compiled the
+same way as the accel model: chassis (x, y, yaw), four wheel spins with the rears through
+a Drexler-style limited-slip diff (preload + locking torque proportional to input
+torque), combined-slip Pacejka tires with relaxation lengths, longitudinal and lateral
+load transfer (lagged), aero, brakes, the motor map, and the pack with its state of
+charge and temperature (I²R heating, passive cooling to ambient). New `Car` and `Pack`
+fields for it are marked ESTIMATE.
+
+`accel/drive.py` runs it from a driver's pedal, brake and steering wheel, optionally through
+the VCU controller (fed per-wheel sensor edges):
+
+```python
+from accel.drive import drive
+from accel.driver import PathFollower, skidpad
+res = drive(PathFollower(skidpad(), speed=10.0))
+res.df[["t", "X", "Y", "speed", "ay", "beta", "soc", "pack_temp"]]
+```
+
+`accel/driver.py` has `ScriptedDriver` (inputs as functions of time) and `PathFollower` (pure
+pursuit steering, acceleration-limited speed control, lifts when the car slides), paths
+(`skidpad()`, `Path.from_segments`) and a speed profile from acceleration limits.
+`python -m accel.drive --out drive.png` plots a skidpad and a short course. With straight
+steering it reproduces the accel model's times; the tests check steady cornering, left/right
+symmetry, pack charge and heat bookkeeping and the diff.
 
 ## VCU controller (sim + car)
 

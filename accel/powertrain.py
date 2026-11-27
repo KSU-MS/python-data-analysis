@@ -72,11 +72,31 @@ class Pack:
     State of charge is held constant: a 75 m run uses ~0.1 kWh of a ~5 kWh pack.
     """
 
-    def __init__(self, pack: battery.batteryPack):
+    def __init__(self, pack: battery.batteryPack, *, cell_mass: float = 0.27,
+                 cell_heat_capacity: float = 1000.0, h_a: float = 15.0,
+                 ambient_c: float = 25.0, resistance_temp_coeff: float = 0.02):
+        """The thermal and state-of-charge terms are used by the double-track model
+        (vehicle.py); the accel sim holds SOC and temperature constant.
+
+        cell_mass: kg per cell, ESTIMATE (13 Ah pouch).
+        cell_heat_capacity: J/(kg K), ESTIMATE (typical Li-ion pouch).
+        h_a: W/K from the pack to ambient. No active cooling; ESTIMATE.
+        resistance_temp_coeff: R(T) = R * exp(-coeff * (T - 25 C)), ESTIMATE.
+        """
         self.name = pack.name
         self.v_oc = pack.getInstantaneousVoltage(0)
         self.resistance = pack.cell.resistance * pack.seriesCount / pack.parallelCount
         self.max_current = pack.maxdischarge
+        self.series, self.parallel = pack.seriesCount, pack.parallelCount
+        self.capacity_ah = pack.cell.maxcapacity * pack.parallelCount / 1000
+        # cell open-circuit voltage vs state of charge, from the cell's capacity curve
+        # (battery_soc_curves/; the COSMX one is adjusted from the LG HE2 curve, not measured)
+        self.ocv_soc = np.linspace(0.0, 1.0, 26)
+        self.ocv_cell = np.asarray(pack.cell.voltageUpdateFunction(self.ocv_soc * pack.cell.maxcapacity))
+        self.thermal_mass = cell_mass * pack.seriesCount * pack.parallelCount * cell_heat_capacity
+        self.h_a = h_a
+        self.ambient_c = ambient_c
+        self.resistance_temp_coeff = resistance_temp_coeff
 
     def solve(self, power: float):
         """Bus (voltage, current) when drawing `power` W, honoring the current limit.

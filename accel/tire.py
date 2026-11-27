@@ -72,6 +72,7 @@ class PacejkaTire:
     """TTC Pacejka fit from tire/, tabulated over (slip, Fz) at zero slip angle.
 
     `scale` maps belt grip to road grip; the old notebook used 0.5-0.6.
+    `combined_table()` / `symbolic_fxy()` add slip angle, for the double-track model.
     """
 
     def __init__(self, coeffs=None, scale: float = 0.6, v: float = 15.0,
@@ -80,7 +81,9 @@ class PacejkaTire:
         from tire import tire_utils
         from tire.tire_model_pacejka_2010 import tire_model_from_arr
 
-        model = tire_model_from_arr(tire_utils.H_LC0_18X6_7 if coeffs is None else coeffs)
+        self._coeffs = tuple(tire_utils.H_LC0_18X6_7 if coeffs is None else coeffs)
+        self._v = v
+        model = tire_model_from_arr(list(self._coeffs))
         self.scale = scale
         self._fz = [float(f) for f in fz_grid]
         self._k = [float(k) for k in k_grid]
@@ -138,6 +141,62 @@ class PacejkaTire:
         mu_k = interp(ca.vertcat(ca.fmin(ca.fmax(kappa, ks[0]), ks[-1]),
                                  ca.fmin(ca.fmax(fz, fzs[0]), fzs[-1])))
         return ca.if_else(fz <= 0, 0, mu_k * scale * fz)
+
+
+    def combined_table(self):
+        """(kappa grid, slip angle grid (rad), Fz grid, Fx / Fz, Fy / Fz), unscaled,
+        arrays indexed [kappa, alpha, Fz]. Sign convention: x forward, y left, slip
+        angle alpha = -atan(v_lateral / v_forward) at the contact patch, so Fy has
+        the sign of alpha (the TTC fit is SAE: Fy opposes its slip angle)."""
+        return _combined_table(self._coeffs, self._v)
+
+    def table_key_2d(self) -> str:
+        return _hash("pacejka2d", *self.combined_table())
+
+    def symbolic_fxy(self, kappa, alpha, fz, scale):
+        """(Fx, Fy) per wheel as CasADi expressions, combined slip, at grip `scale`."""
+        ks, alphas, fzs, fx, fy = self.combined_table()
+        grid = [ks, alphas, fzs]
+        q = ca.vertcat(ca.fmin(ca.fmax(kappa, ks[0]), ks[-1]),
+                       ca.fmin(ca.fmax(alpha, alphas[0]), alphas[-1]),
+                       ca.fmin(ca.fmax(fz, fzs[0]), fzs[-1]))
+        # CasADi wants the first dimension fastest
+        mu_x = ca.interpolant("mux_pacejka", "linear", grid, fx.ravel(order="F"))(q)
+        mu_y = ca.interpolant("muy_pacejka", "linear", grid, fy.ravel(order="F"))(q)
+        f = ca.fmax(fz, 0) * scale
+        return mu_x * f, mu_y * f
+
+
+@lru_cache(maxsize=4)
+def _combined_table(coeffs: tuple, v: float):
+    from tire.tire_model_pacejka_2010 import tire_model_from_arr
+
+    model = tire_model_from_arr(list(coeffs))
+    # fine where the curves bend (small slip), coarse where they've saturated
+    ks = np.round(np.concatenate([np.arange(-0.3, -0.1, 0.05), np.arange(-0.1, 0.3, 0.01),
+                                  np.arange(0.3, 1.0001, 0.05)]), 4)
+    pos = np.round(np.concatenate([np.arange(0.0, 0.1, 0.005), np.arange(0.1, 0.3501, 0.025)]), 4)
+    alphas = np.concatenate([-pos[:0:-1], pos])
+    fzs = np.arange(100.0, 2001.0, 100.0)
+    fx = np.zeros((len(ks), len(alphas), len(fzs)))
+    fy = np.zeros_like(fx)
+    for j, a in enumerate(alphas):
+        for i, fz in enumerate(fzs):
+            x, y, _ = model.s_r_sweep(float(fz), float(a), ks, v=v)
+            fx[:, j, i] = np.asarray(x) / fz
+            fy[:, j, i] = np.asarray(y) / fz
+    # SAE fit: Fy decreases with its slip angle; flip to Fy following alpha
+    j0 = int(np.argmin(np.abs(alphas)))
+    k0 = int(np.argmin(np.abs(ks)))
+    if fy[k0, j0 + 1, 10] < fy[k0, j0 - 1, 10]:
+        fy = -fy
+    # Exactly symmetric: Fx even and Fy odd in slip angle. The fit's offsets (ply
+    # steer, conicity: ~1e-6 N here) cancel on a car with mirrored tires, and a
+    # symmetric car must stay symmetric: with the rears spinning, straight-line
+    # running is yaw-unstable and amplifies any seed, rounding included.
+    fx = 0.5 * (fx + fx[:, ::-1, :])
+    fy = 0.5 * (fy - fy[:, ::-1, :])
+    return ks, alphas, fzs, fx, fy
 
 
 def _signed(kappa):

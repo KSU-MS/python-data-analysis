@@ -221,17 +221,27 @@ class FirmwareController:
         # sit staged on the line: the controller sees a stationary car
         t, dt = 0.0, self.sensors.tick
         while t < self._t0 - 1e-9:
-            self._advance(t, dt, 0.0, 0.0, 0.0, 0.0, 0.0)
+            self._advance(t, dt, (0.0, 0.0, 0.0, 0.0), 0.0, 0.0, 0.0, 0.0, 0.0)
             t += dt
 
     def __call__(self, t, dt, v, omega_rear, accel, motor_torque, driver_torque):
-        """Advance sensors by one plant step from t to t + dt; return the torque command."""
-        return self._advance(t + self._t0, dt, v, omega_rear, accel, motor_torque, driver_torque)
+        """Advance sensors by one plant step from t to t + dt; return the torque command.
+        Straight line (sim.simulate): front wheels roll at v, rears at omega_rear."""
+        w_front = v / self._r
+        return self._advance(t + self._t0, dt, (w_front, w_front, omega_rear, omega_rear),
+                             omega_rear * self._gr * 60 / (2 * math.pi), v, accel,
+                             motor_torque, driver_torque)
 
-    def _advance(self, t, dt, v, omega_rear, accel, motor_torque, driver_torque):
+    def step(self, t, dt, wheel_omegas, motor_rpm, vel_x, accel_x, motor_torque, driver_torque):
+        """Same, with each wheel's speed (rad/s; FL, FR, RL, RR) and the motor's, for
+        the double-track model (drive.py). vel_x / accel_x: body forward velocity and
+        acceleration, what the VectorNav frames carry here."""
+        return self._advance(t + self._t0, dt, wheel_omegas, motor_rpm, vel_x, accel_x,
+                             motor_torque, driver_torque)
+
+    def _advance(self, t, dt, omegas, motor_rpm, v, accel, motor_torque, driver_torque):
         s = self.sensors
         # wheel speed sensors: count tooth crossings, interpolate edge times
-        omegas = (v / self._r, v / self._r, omega_rear, omega_rear)
         for i, w in enumerate(omegas):
             th0 = self._theta[i]
             th1 = th0 + w * dt
@@ -246,7 +256,7 @@ class FirmwareController:
         nxt = self._next
         if t >= nxt["motor"]:
             nxt["motor"] += s.motor_rpm_period
-            self._pending.append((t + s.can_latency, "motor", omega_rear * self._gr * 60 / (2 * math.pi)))
+            self._pending.append((t + s.can_latency, "motor", motor_rpm))
         if t >= nxt["torque"]:
             nxt["torque"] += s.motor_torque_period
             self._pending.append((t + s.can_latency, "torque", motor_torque))
