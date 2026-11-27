@@ -74,6 +74,7 @@ class Track:
     w_left: np.ndarray
     w_right: np.ndarray
     cones: np.ndarray | None = None      # (n, 2) cone positions, the centerline's frame
+    origin: tuple | None = None          # (lon, lat) of the frame's (0, 0): x east, y north
 
     def limits(self, car_width: float = CAR_WIDTH, margin: float = EDGE_MARGIN):
         """(lo, hi): the car centre's lateral offset bounds (+ left) at each centerline
@@ -90,7 +91,15 @@ class Track:
     def resampled(self, step: float) -> "Track":
         ref = _resample(self.center, step)
         at = lambda w: np.interp(ref.s, self.center.s, w, period=self.center.length)
-        return Track(self.name, ref, at(self.w_left), at(self.w_right), self.cones)
+        return Track(self.name, ref, at(self.w_left), at(self.w_right), self.cones, self.origin)
+
+    def lonlat(self, x, y):
+        """(lon, lat) of points in the track's frame (the frame load_line / cone_track
+        projected from)."""
+        lon0, lat0 = self.origin
+        lat = lat0 + np.degrees(np.asarray(y) / EARTH_RADIUS)
+        lon = lon0 + np.degrees(np.asarray(x) / (EARTH_RADIUS * np.cos(np.radians(lat0))))
+        return lon, lat
 
 
 def constant_width(center: Path, width: float = TRACK_WIDTH, name: str = "") -> Track:
@@ -100,7 +109,10 @@ def constant_width(center: Path, width: float = TRACK_WIDTH, name: str = "") -> 
 
 def michigan_2026(width: float = TRACK_WIDTH) -> Track:
     """The 2026 EV endurance line with a guessed constant width."""
-    return constant_width(michigan_2026_endurance(), width, "Michigan 2026 EV endurance")
+    t = constant_width(michigan_2026_endurance(), width, "Michigan 2026 EV endurance")
+    feature = json.loads((TRACKS / "michigan_2026_ev_endurance.geojson").read_text())["features"][0]
+    t.origin = tuple(feature["geometry"]["coordinates"][0][:2])    # load_line's origin
+    return t
 
 
 def michigan_ac18() -> Track:
@@ -180,7 +192,7 @@ def cone_track(geojson, smoothing: float = 0.5, step: float = 0.5, max_offset: f
     center = _resample(Path(guide.x + shift * nx, guide.y + shift * ny, closed=True), step)
     wl, wr = widths(center)
     name = feats.get("properties", {}).get("name", FilePath(geojson).stem)
-    return Track(name, center, wl, wr, np.column_stack([cx, cy]))
+    return Track(name, center, wl, wr, np.column_stack([cx, cy]), tuple(origin[:2]))
 
 
 def normals(path: Path) -> tuple[np.ndarray, np.ndarray]:

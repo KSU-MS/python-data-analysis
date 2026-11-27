@@ -28,8 +28,10 @@ def plan(track: T.Track, grip: float = 0.85, margin: float = T.EDGE_MARGIN, step
     car = car or Car()
     h = hashlib.sha1(repr((dataclasses.astuple(car), grip, margin, step)).encode())
     for a in (track.center.x, track.center.y, track.w_left, track.w_right):
-        h.update(np.asarray(a).tobytes())
-    for mod in (mintime_dt, mintime, envelope, T):
+        # rounded: a track built by spline fits differs in the last bits between
+        # machines, which would keep plans solved on one from being used on another
+        h.update(np.round(np.asarray(a), 6).tobytes())
+    for mod in (mintime_dt, mintime, envelope):         # the track itself is hashed above
         h.update(open(mod.__file__, "rb").read())
     path = CACHE / f"{h.hexdigest()[:16]}.pkl"
     if path.exists():

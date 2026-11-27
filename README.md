@@ -126,7 +126,7 @@ nix profile install .#completions   # Nix: zsh and bash, no rc file edits (works
                                     # read-only home-manager .zshrc); new shells pick it up
 kmslap --install-completion         # without Nix: appends to your shell's rc file
 kmslap --help                       # commands: accel report report-diff junit-summary viz drive
-                                    # endurance laptime race birdseye strategy bench dyno aero
+                                    # endurance laptime race mcap birdseye strategy bench dyno aero
                                     # pack-temps remote cluster
 ```
 
@@ -322,6 +322,37 @@ the car's footprint); off course is 20 s (all four tires outside the edges). Eve
 driven lap can be saved (`reporting/runs.py`, `build/runs/<track>/`: the time series
 plus lap time, penalties and settings) and raced against the others (`kmslap race`).
 
+### Simulated car logs (Foxglove)
+
+`kmslap mcap ac18 --out sim/ac18.mcap` drives the track's minimum-time plan and writes
+the run as the car's logger would record it on the current car: every simulated sensor
+mapped to its message in the latest DBC (`ksu-ms-dbc` `main`), each value put through
+the DBC as a CAN frame would be, in the logger's topics (`<message>_data`) and protobuf
+schema. So the team's Foxglove layouts and scripts read it like a real log. The map
+(`SENSORS` in `kmslap/reporting/mcap_log.py`):
+
+| Simulated | Messages |
+|---|---|
+| attitude, yaw rate, g, velocity, position | `vectornav_*` (VN-300, aligned with the car) |
+| wheel speeds, tire loads, damper travel | `an1_{fl,fr,rl,rr}_{wheelspeed,loadcell,shockpot}` |
+| steering, brake pressures | `an1_steeringpot`, `an1_{front,rear}_brakepressure`, `vcu_pedals_travel.steering_angle` |
+| pedals | `vcu_pedals_travel`, `vcu_pedal_readings` (raw) |
+| motor speed / torque / currents / voltages, inverter state | `M165`-`M168`, `M170`, `M172`, `M173`; the VCU's command `M192` |
+| pack current, voltage, SOC, temperatures | Orion `MSGID_0X6B1`-`6B3`, `module*_temps` (thermistor volts) |
+| VCU state, energy, distance | `vcu_status`, `vcu_distance_tracker_motor`, `vcu_lifetime_distance_and_ontime` |
+
+Board firmware / config, charger, inverter diagnostics and the temperatures the sim
+doesn't model (tires, motor, coolant) aren't written. Raw ADC calibrations and shock pot
+travel are estimates, noted in the table and the file's metadata. On top, `/sim/...`
+topics carry what no sensor gives: the car in 3D with steered wheels (`/sim/tf`,
+`/sim/car`), the track with its cones and the planned line (`/sim/track`), position
+(`/sim/location`) and the true speed, body slip, g and lap (`/sim/state`). Open the
+`.mcap` in Foxglove with the `.layout.json` written beside it.
+
+The sensors and boards are stand-ins; a board's own firmware, run in the loop like
+`controller/`, can replace one (the VCU's pedal -> plausibility -> state machine ->
+torque chain first). Where the reference data comes from: `cardata/mcap/README.md`.
+
 ## VCU controller (sim + car)
 
 `controller/` is the launch/traction controller as firmware-style C++ (no heap, no Arduino, time passed
@@ -494,7 +525,7 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 | `accel_sim.ipynb` | main accel notebook |
 | `tracks/` | tracks (GeoJSON): the FSAE Michigan 2026 EV endurance line, the Assetto Corsa Michigan cone course |
 | `datasheets/` | COSMX cell (image + `cosmx_95b0d0hd.toml`, read by `Pack`), EMRAX 228 PDF, its efficiency map digitized to CSV (`extract_emrax_efficiency.py`, with a check overlay) |
-| `cardata/`, `olapsims/` | logged car data (KS5e launches, KS6e accumulator tests, dyno pulls in `cardata/dyno/`, 2024 aero tests in `cardata/aero/`), OptimumLap export |
+| `cardata/`, `olapsims/` | logged car data (KS5e launches, KS6e accumulator tests, dyno pulls in `cardata/dyno/`, 2024 aero tests in `cardata/aero/`), the logger's format for simulated logs (`cardata/mcap/`), OptimumLap export |
 | `legacy/` | older log analysis, motor curve, battery and wiring notebooks and scripts (many read logs from paths that aren't in the repo); to review for what's worth bringing back |
 | `pyproject.toml`, `uv.lock` | Python dependencies and their lock (uv) |
 | `flake.nix`, `flake.lock` | Nix dev shell: builds the env from `uv.lock` via uv2nix, plus compilers and the Rerun viewer |

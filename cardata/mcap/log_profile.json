@@ -1,0 +1,341 @@
+{
+ "source": "12 logs from 2025-06-13 (car stationary, wheels off the ground)",
+ "rates_hz": {
+  "acu_firmware_version_data": 0.1,
+  "acu_shutdown_status_data": 2.0,
+  "bms_current_limit_data": 9.76,
+  "charginglimits_data": 1.24,
+  "dash_buttons_data": 9.45,
+  "dash_firmware_version_data": 0.95,
+  "evelogger_vectornav_acceleration_data": 100.0,
+  "evelogger_vectornav_attitude_data": 100.0,
+  "evelogger_vectornav_gyro_data": 100.0,
+  "evelogger_vectornav_position_data": 20.0,
+  "evelogger_vectornav_time_data": 20.0,
+  "evelogger_vectornav_velocity_data": 100.0,
+  "m160_temperature_set_1_data": 3.73,
+  "m161_temperature_set_2_data": 3.74,
+  "m162_temperature_set_3_data": 3.73,
+  "m163_analog_input_voltages_data": 4.12,
+  "m164_digital_input_status_data": 4.12,
+  "m165_motor_position_info_data": 4.14,
+  "m166_current_info_data": 4.14,
+  "m167_voltage_info_data": 4.13,
+  "m168_flux_id_iq_info_data": 4.11,
+  "m169_internal_voltages_data": 3.73,
+  "m170_internal_states_data": 4.12,
+  "m171_fault_codes_data": 4.12,
+  "m172_torque_and_timer_info_data": 4.09,
+  "m173_modulation_and_flux_info_data": 4.1,
+  "m174_firmware_info_data": 3.72,
+  "m192_command_message_data": 10.0,
+  "module1_status_data": 0.2,
+  "module1_temps_data": 0.2,
+  "module2_status_data": 0.2,
+  "module2_temps_data": 0.2,
+  "module3_status_data": 0.2,
+  "module3_temps_data": 0.2,
+  "module4_status_data": 0.2,
+  "module4_temps_data": 0.2,
+  "module5_status_data": 0.2,
+  "module5_temps_data": 0.2,
+  "msgid_0x6b1_data": 125.0,
+  "msgid_0x6b2_data": 125.0,
+  "msgid_0x6b3_data": 9.61,
+  "precharge_status_data": 0.98,
+  "vcu_firmware_version_data": 1.0,
+  "vcu_pedal_readings_data": 20.0,
+  "vcu_pedals_travel_data": 20.0,
+  "vcu_status_data": 1.0
+ },
+ "housekeeping": {
+  "acu_firmware_version_data": {
+   "acu_firmware_is_dirty": true,
+   "acu_code_on_main": true,
+   "acu_on_time_seconds": 20,
+   "acu_firmware_version": 24093181
+  },
+  "acu_shutdown_status_data": {
+   "acu_imd_relay_state": true,
+   "acu_bms_relay_state": true,
+   "acu_imd_gpio_state": true,
+   "acu_bms_gpio_state": true
+  },
+  "bms_current_limit_data": {
+   "BMS_Max_Discharge_Current": 600,
+   "BMS_Max_Charge_Current": 60
+  },
+  "charginglimits_data": {
+   "MaxVoltage": 599.2,
+   "MaxCurrent": 3.0,
+   "Control": "CHARGING_START"
+  },
+  "dash_buttons_data": {
+   "dash_button3status": true
+  },
+  "dash_firmware_version_data": {
+   "dash_fw_version": 157822329,
+   "dash_on_time_seconds": 18,
+   "dash_project_on_main": true,
+   "dash_project_is_dirty": true
+  },
+  "evelogger_vectornav_acceleration_data": {
+   "evelogger_vectornav_accelX": 9.71,
+   "evelogger_vectornav_accelY": -0.01,
+   "evelogger_vectornav_accelZ": -0.74
+  },
+  "evelogger_vectornav_attitude_data": {
+   "evelogger_vectornav_yaw": -166.83,
+   "evelogger_vectornav_roll": 1.14,
+   "evelogger_vectornav_pitch": 85.49
+  },
+  "evelogger_vectornav_gyro_data": {
+   "evelogger_vectornav_W_y": 0.01
+  },
+  "evelogger_vectornav_time_data": {
+   "evelogger_vectornav_time": "16751257000"
+  },
+  "m160_temperature_set_1_data": {
+   "INV_Module_A_Temp": 21.3,
+   "INV_Module_B_Temp": 20.9,
+   "INV_Module_C_Temp": 21.2,
+   "INV_Gate_Driver_Board_Temp": 24.8
+  },
+  "m161_temperature_set_2_data": {
+   "INV_Control_Board_Temp": 22.0,
+   "INV_RTD1_Temperature": 300.0,
+   "INV_RTD2_Temperature": 300.0
+  },
+  "m162_temperature_set_3_data": {
+   "INV_Coolant_Temp": 18.3,
+   "INV_Hot_Spot_Temp": 18.3,
+   "INV_Motor_Temp": 138.1
+  },
+  "m163_analog_input_voltages_data": {
+   "INV_Analog_Input_1": 4.99,
+   "INV_Analog_Input_2": 4.99,
+   "INV_Analog_Input_3": 4.96,
+   "INV_Analog_Input_4": 0.16
+  },
+  "m164_digital_input_status_data": {
+   "INV_Digital_Input_6": true
+  },
+  "m165_motor_position_info_data": {
+   "INV_Motor_Angle_Electrical": 217.2,
+   "INV_Delta_Resolver_Filtered": 142.8
+  },
+  "m166_current_info_data": {
+   "INV_Phase_A_Current": 0.2,
+   "INV_Phase_B_Current": 0.3,
+   "INV_Phase_C_Current": -0.3
+  },
+  "m167_voltage_info_data": {
+   "INV_DC_Bus_Voltage": 1.0,
+   "INV_VBC_Vq_Voltage": -0.1
+  },
+  "m168_flux_id_iq_info_data": {
+   "INV_Vd_ff": 2.6,
+   "INV_Id": 0.3,
+   "INV_Iq": -0.5
+  },
+  "m169_internal_voltages_data": {
+   "INV_Ref_Voltage_1_5": 1.49,
+   "INV_Ref_Voltage_2_5": 2.51,
+   "INV_Ref_Voltage_5_0": 5.06,
+   "INV_Ref_Voltage_12_0": 12.89
+  },
+  "m170_internal_states_data": {
+   "INV_VSM_State": "VSM wait state",
+   "INV_PWM_Frequency": 12,
+   "INV_Inverter_State": "Idle Stop",
+   "INV_Inverter_Discharge_State": "Disabled",
+   "INV_Rolling_Counter": 1,
+   "INV_Burst_Model_Mode": "Stall",
+   "INV_Key_Switch_Start_Status": true,
+   "INV_Limit_Stall_Burst_Model": "Not Limiting"
+  },
+  "m171_fault_codes_data": {
+   "INV_Run_Fault_Hi": 16
+  },
+  "m172_torque_and_timer_info_data": {
+   "INV_Torque_Feedback": -0.2,
+   "INV_Power_On_Timer": 15.894
+  },
+  "m173_modulation_and_flux_info_data": {
+   "INV_Modulation_Index": 0.0002
+  },
+  "m174_firmware_info_data": {
+   "INV_Project_Code_EEP_Ver": 16,
+   "INV_SW_Version": 25886,
+   "INV_DateCode_MMDD": 528,
+   "INV_DateCode_YYYY": 8226
+  },
+  "m192_command_message_data": {
+   "VCU_INV_Direction_Command": "CW",
+   "VCU_INV_Inverter_Enable": "Turn the inverter OFF",
+   "VCU_INV_Inverter_Discharge": "Discharge Disable"
+  },
+  "module1_status_data": {
+   "module_temperature": 56,
+   "module_humidity": 29,
+   "module_code_on_main": true,
+   "module_on_time_seconds": 20,
+   "module_firmware_version": 198553058
+  },
+  "module1_temps_data": {
+   "module_voltage_1": 1.3,
+   "module_voltage_2": 1.29,
+   "module_voltage_3": 1.29,
+   "module_voltage_4": 1.29,
+   "module_voltage_5": 1.29,
+   "module_voltage_6": 1.28,
+   "module_voltage_7": 1.28,
+   "module_voltage_8": 1.28
+  },
+  "module2_status_data": {
+   "module_temperature": 55,
+   "module_firmware_is_dirty": true,
+   "module_humidity": 29,
+   "module_code_on_main": true,
+   "module_on_time_seconds": 20,
+   "module_firmware_version": 198553058
+  },
+  "module2_temps_data": {
+   "module_voltage_5": 1.32,
+   "module_voltage_6": 1.31,
+   "module_voltage_7": 1.31,
+   "module_voltage_8": 1.31
+  },
+  "module3_status_data": {
+   "module_temperature": 57,
+   "module_firmware_is_dirty": true,
+   "module_humidity": 32,
+   "module_code_on_main": true,
+   "module_on_time_seconds": 20,
+   "module_firmware_version": 198553058
+  },
+  "module3_temps_data": {
+   "module_voltage_5": 1.27,
+   "module_voltage_6": 1.26,
+   "module_voltage_7": 1.25,
+   "module_voltage_8": 1.25
+  },
+  "module4_status_data": {
+   "module_temperature": 71,
+   "module_firmware_is_dirty": true,
+   "module_humidity": 38,
+   "module_code_on_main": true,
+   "module_on_time_seconds": 20,
+   "module_firmware_version": 198553058
+  },
+  "module4_temps_data": {
+   "module_voltage_1": 1.29,
+   "module_voltage_2": 1.28,
+   "module_voltage_3": 1.28,
+   "module_voltage_4": 1.28,
+   "module_voltage_5": 1.28,
+   "module_voltage_6": 1.28,
+   "module_voltage_7": 1.28,
+   "module_voltage_8": 1.28
+  },
+  "module5_status_data": {
+   "module_temperature": 62,
+   "module_firmware_is_dirty": true,
+   "module_humidity": 32,
+   "module_code_on_main": true,
+   "module_on_time_seconds": 20,
+   "module_firmware_version": 198553058
+  },
+  "module5_temps_data": {
+   "module_voltage_1": 1.64,
+   "module_voltage_2": 1.64,
+   "module_voltage_3": 1.64,
+   "module_voltage_4": 1.64,
+   "module_voltage_5": 1.63,
+   "module_voltage_6": 1.63,
+   "module_voltage_7": 1.63,
+   "module_voltage_8": 1.63
+  },
+  "msgid_0x6b1_data": {
+   "Pack_Inst_Voltage": 591.5,
+   "Pack_Open_Voltage": 591.5,
+   "Pack_Summed_Voltage": 591.55
+  },
+  "msgid_0x6b2_data": {
+   "High_Temperature": 25,
+   "Low_Temperature": 25,
+   "Average_Temperature": 25,
+   "Avg_Cell_Voltage": 0.0014,
+   "Low_Cell_Voltage": 0.0191
+  },
+  "msgid_0x6b3_data": {
+   "Pack_SOC": 95.0
+  },
+  "precharge_status_data": {
+   "precharge_state": 1,
+   "precharge_accVoltageMod100": 31,
+   "precharge_tsVoltageMod100": 31
+  },
+  "vcu_firmware_version_data": {
+   "vcu_fw_version": 120274600,
+   "vcu_on_time_seconds": 18
+  },
+  "vcu_pedal_readings_data": {
+   "APPS1": 2855,
+   "APPS2": 561,
+   "BSE1": 2718
+  },
+  "vcu_pedals_travel_data": {
+   "vcu_bse1_travel": 17.8
+  },
+  "vcu_status_data": {
+   "VCU_IMD_OK_HIGH": true,
+   "VCU_BMS_OK_HIGH": true,
+   "VCU_BSPD_OK_HIGH": true,
+   "VCU_SOFTWARE_OK_HIGH": true,
+   "VCU_BSPD_CURRENT_HIGH": true,
+   "VCU_BSPD_BRAKE_HIGH": true,
+   "VCU_STATEMACHINE_STATE": 1,
+   "VCU_SOFTWARE_OK": true
+  }
+ },
+ "vectornav_parked": {
+  "evelogger_vectornav_yaw": -169.13,
+  "evelogger_vectornav_roll": -0.5,
+  "evelogger_vectornav_pitch": 85.23,
+  "evelogger_vectornav_accelX": 9.69,
+  "evelogger_vectornav_accelY": 0.01,
+  "evelogger_vectornav_accelZ": -0.79,
+  "evelogger_vectornav_W_y": 0.01,
+  "evelogger_vectornav_W_z": -0.02,
+  "evelogger_vectornav_W_x": 0.22
+ },
+ "vectornav_noise_std": {
+  "evelogger_vectornav_yaw": 0.0106,
+  "evelogger_vectornav_roll": 0.01091,
+  "evelogger_vectornav_pitch": 0.00202,
+  "evelogger_vectornav_accelX": 0.03332,
+  "evelogger_vectornav_accelY": 0.02359,
+  "evelogger_vectornav_accelZ": 0.02226,
+  "evelogger_vectornav_W_y": 0.03908,
+  "evelogger_vectornav_W_z": 0.04211,
+  "evelogger_vectornav_W_x": 0.02398
+ },
+ "pedal_raw": {
+  "APPS1": {
+   "p1": 2840.0,
+   "p50": 2854.0,
+   "p99": 3534.0
+  },
+  "APPS2": {
+   "p1": 543.0,
+   "p50": 562.0,
+   "p99": 2026.0
+  },
+  "BSE1": {
+   "p1": 2713.0,
+   "p50": 2720.0,
+   "p99": 2935.0
+  }
+ }
+}

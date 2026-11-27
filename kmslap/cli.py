@@ -186,6 +186,18 @@ def race(track: Annotated[TrackName, typer.Argument()] = TrackName.michigan2026,
 
 
 @app.command()
+def mcap(track: Annotated[TrackName, typer.Argument()] = TrackName.ac18,
+         laps: int = 2, grip: float = 0.85,
+         margin: Annotated[float, typer.Option(help="m kept between the car's side and the edge / cones")] = 0.35,
+         width: Annotated[Optional[float], typer.Option(help="track width, m (michigan2026)")] = None,
+         out: str = "sim.mcap",
+         start: Annotated[Optional[str], typer.Option(help="log start time, ISO (default now)")] = None):
+    """A simulated log in the car logger's MCAP format (same topics / schemas), for Foxglove."""
+    from kmslap.reporting.mcap_log import run
+    run(track.value, laps, grip, margin, width=width, out=out, start=start)
+
+
+@app.command()
 def birdseye(out: str = "birdseye", gif: Annotated[bool, typer.Option(help="also the lap GIF (~1 min)")] = True):
     """Endurance strategy presets racing a flying lap on Michigan 2026: GIF + speed map."""
     from kmslap.reporting.birdseye import run

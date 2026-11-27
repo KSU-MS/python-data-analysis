@@ -106,3 +106,39 @@ def test_race_video(tmp_path):
     track = T.constant_width(oval(), 5.0)
     birdseye.lap_gif(_fake_laps(track), track=track, out=str(tmp_path / "race.mp4"), speedup=20.0, fps=5)
     assert (tmp_path / "race.mp4").stat().st_size > 1000
+
+
+def test_simulated_log_maps_every_sensor_to_the_latest_dbc(tmp_path):
+    """Every mapped sensor message, in the logger's schema for the current DBC, with
+    values that read back as the sim's; plus the /sim truth."""
+    from mcap.reader import make_reader
+    from mcap_protobuf.decoder import DecoderFactory
+    from kmslap.car.params import Car
+    from kmslap.driving.drive import drive
+    from kmslap.driving.follower import PathFollower
+    from kmslap.reporting import mcap_log
+
+    track = T.constant_width(oval(), 6.0)
+    track.origin = (-84.2371765, 42.0688368)
+    f = PathFollower(track.center, speed=12.0, car=Car(), laps=1)
+    res = drive(f, Car(), psi0=float(track.center.heading[0]), t_max=8.0, log_period=0.01)
+    counts = mcap_log.write(res.df, track, tmp_path / "sim.mcap", preroll_s=1.0, start_ns=1_749_823_200_000_000_000)
+    expected = {m.lower() + "_data" for m in mcap_log.SENSORS} | {"m170_internal_states_data", "m192_command_message_data", "vcu_status_data"}
+    assert expected <= set(counts)
+    assert {"/sim/tf", "/sim/car", "/sim/track", "/sim/state", "/sim/location"} <= set(counts)
+    descriptor = (mcap_log.DIR / "hytech.bin").read_bytes()
+    last = {}
+    with open(tmp_path / "sim.mcap", "rb") as fh:
+        r = make_reader(fh, decoder_factories=[DecoderFactory()])
+        s = r.get_summary()
+        for ch in s.channels.values():
+            if not ch.topic.startswith("/sim"):
+                assert s.schemas[ch.schema_id].data == descriptor, ch.topic
+        for _, ch, _, m in r.iter_decoded_messages(topics=["m172_torque_and_timer_info_data", "an1_fl_wheelspeed_data",
+                                                           "an1_rl_loadcell_data", "vcu_status_data"]):
+            last[ch.topic] = m
+    assert last["m172_torque_and_timer_info_data"].INV_Torque_Feedback > 0          # cruising, motoring
+    v = res.df.speed.iloc[-1]
+    assert last["an1_fl_wheelspeed_data"].wheel_rpm == pytest.approx(v / Car().tire_radius * 60 / (2 * np.pi), rel=0.05)
+    assert 400 < last["an1_rl_loadcell_data"].force_N < 1500                          # a quarter of the car, roughly
+    assert last["vcu_status_data"].vcu_statemachine_state == "READY_TO_DRIVE"

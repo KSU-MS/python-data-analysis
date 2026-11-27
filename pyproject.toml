@@ -26,6 +26,11 @@ dependencies = [
     "pyserial>=3.5",
     "requests>=2.31",
     "casadi>=3.6",
+    # simulated car logs in the logger's MCAP format (reporting/mcap_log.py)
+    "mcap>=1.1",
+    "mcap-protobuf-support>=0.5",
+    "protobuf>=4.25",
+    "foxglove-schemas-protobuf>=0.3",
     "rich>=13",
     "typer>=0.12",
 ]
