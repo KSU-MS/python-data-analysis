@@ -18,6 +18,7 @@ log analysis notebooks and scripts are in `legacy/`.
 | `kmslap/strategy.py` | endurance strategy tuning (pace, coasting, DRS, regen) |
 | `kmslap/validation/`, `reporting/` | KS5e / OptimumLap comparisons; the CI report, PR diff, Rerun 3D view |
 | `kmslap/ops/` | remote runner, cluster across machines, benchmarks |
+| `kmslap/hil/` | battery in the loop: pack backends, the rig protocol and its emulator, live Foxglove |
 | `kmslap/cli.py` | the `kmslap` command |
 
 - [Setup](#setup)
@@ -126,7 +127,7 @@ nix profile install .#completions   # Nix: zsh and bash, no rc file edits (works
                                     # read-only home-manager .zshrc); new shells pick it up
 kmslap --install-completion         # without Nix: appends to your shell's rc file
 kmslap --help                       # commands: accel report report-diff junit-summary viz drive
-                                    # endurance laptime race mcap birdseye strategy bench dyno aero
+                                    # endurance laptime race mcap hil birdseye strategy bench dyno aero
                                     # pack-temps remote cluster
 ```
 
@@ -349,9 +350,44 @@ topics carry what no sensor gives: the car in 3D with steered wheels (`/sim/tf`,
 (`/sim/location`) and the true speed, body slip, g and lap (`/sim/state`). Open the
 `.mcap` in Foxglove with the `.layout.json` written beside it.
 
-The sensors and boards are stand-ins; a board's own firmware, run in the loop like
-`controller/`, can replace one (the VCU's pedal -> plausibility -> state machine ->
-torque chain first). Where the reference data comes from: `cardata/mcap/README.md`.
+The sensors and boards are stand-ins. **TODO (firmware in the loop):** run the boards'
+own firmware in the sim loop in place of the stand-ins, as `controller/` already is:
+the VCU first (raw pedal ADC -> travel -> plausibility -> state machine -> torque, from
+`kms-vcu` once its ota-sil work settles), then the ACU and BMS. Where the reference data comes from: `cardata/mcap/README.md`.
+
+### Battery in the loop (`kmslap hil`)
+
+The lap sim with a real cell standing in for its battery: when the car draws (or
+regenerates) current, a bidirectional load makes one real COSMX cell carry it (the pack
+is 144s1p, so one cell carries the whole pack current), and the cell's measured voltage,
+current and temperature go back into the car model, scaled to the pack. The rig is its
+own project: `~/dev/kms-cell-load` (requirements, design, safety, the CAN protocol
+`cell_load.dbc`; a copy is in `cardata/hil/`).
+
+```sh
+kmslap hil ac18                          # the sim's own pack: serve, Start from Foxglove
+kmslap hil ac18 --pack virtual-cell      # the rig emulator on a virtual CAN bus
+kmslap hil ac18 --pack can --can-channel can0    # the real rig
+kmslap hil ac18 --autostart --once --no-realtime # one run, headless
+```
+
+Connect Foxglove to `ws://localhost:8765` and import `hil/hil.layout.json`: the car on
+the track (isometric, following it), a map, gauges (cell current, voltage, temperature,
+SoC, pack power, speed), run and rig state, Start / Stop / Reset / Abort buttons (Foxglove
+service calls), and plots of the cell, the car and the loop's latency. Each run is saved
+to `hil/*.mcap`: the car's sensors in the logger's format plus the `/hil` topics.
+
+How the cell gets into the car model: the model's pack (open-circuit voltage from SOC,
+resistance from temperature) can take both from outside (`pack_ext`; off, the model is
+bit-for-bit the same). A pack backend (`kmslap/hil/backends.py`) exchanges with it every
+tick: it commands the car's current to the rig and fits the cell's open-circuit voltage
+and resistance live from what it measures (`CellEstimator`), so the car draws current
+the way the real cell lets it; SOC is counted from the measured current, temperature is
+the cell's. The `virtual-cell` backend talks the same protocol to an emulated rig
+(`kmslap/hil/rig.py`, with its own cell model): the whole path runs without hardware.
+
+TODO: a custom Foxglove extension panel for runs (pick the track, laps and backend, show
+the rig's fault text), once the built-in service-call buttons get limiting.
 
 ## VCU controller (sim + car)
 

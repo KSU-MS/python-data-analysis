@@ -195,6 +195,12 @@ class CompiledStep:
         self._cur = 0
         self._wire()
 
+    def set_param(self, i: int, value: float):
+        self._p[i] = value
+
+    def set_state(self, i: int, value: float):
+        self._bufs[self._cur][i] = value
+
     def _wire(self):
         self._arg[0] = ctypes.addressof(self._bufs[self._cur])
         self._res[0] = ctypes.addressof(self._bufs[1 - self._cur])

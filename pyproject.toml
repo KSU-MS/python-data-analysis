@@ -31,6 +31,9 @@ dependencies = [
     "mcap-protobuf-support>=0.5",
     "protobuf>=4.25",
     "foxglove-schemas-protobuf>=0.3",
+    # cell in the loop (kmslap hil): live Foxglove server, CAN to the rig
+    "foxglove-sdk>=0.16",
+    "python-can>=4.4",
     "rich>=13",
     "typer>=0.12",
 ]

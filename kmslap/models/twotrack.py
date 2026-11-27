@@ -66,7 +66,8 @@ PARAMS = CAR_PARAMS + ["relaxation_length", "relaxation_length_lat", "tire_scale
                        "rotor_inertia", "pack_series", "pack_capacity_ah", "pack_resistance_25c",
                        "pack_max_current", "pack_thermal_mass", "pack_h_a", "pack_ambient_c",
                        "pack_resistance_temp_coeff", "pack_v_cell_min", "pack_v_cell_max",
-                       "pack_max_charge_current", "regen_enabled", "regen_max_torque", "dt"]
+                       "pack_max_charge_current", "regen_enabled", "regen_max_torque",
+                       "pack_ext", "pack_ext_v_oc", "pack_ext_r", "dt"]
 BRAKE_EPS = 2.0   # rad/s, brake torque fades to 0 on a stopped wheel (numerical)
 
 
@@ -86,7 +87,8 @@ def params(car: Car, motor: MotorMap, pack: Pack, tire, *, relaxation_length: fl
              pack_resistance_temp_coeff=pack.resistance_temp_coeff, pack_v_cell_min=pack.v_cell_min,
              pack_v_cell_max=pack.v_cell_max, pack_max_charge_current=pack.max_charge_current,
              regen_enabled=0.0 if regen is None else 1.0,
-             regen_max_torque=0.0 if regen is None else regen.max_torque, dt=dt)
+             regen_max_torque=0.0 if regen is None else regen.max_torque,
+             pack_ext=0.0, pack_ext_v_oc=0.0, pack_ext_r=0.0, dt=dt)
     return np.array([p[k] for k in PARAMS], dtype=float)
 
 
@@ -154,6 +156,10 @@ def step_function(motor: MotorMap, tire, pack: Pack) -> ca.Function:
     ocv = ca.interpolant("ocv", "linear", [pack.ocv_soc], pack.ocv_cell)
     v_oc = p["pack_series"] * ocv(_clamp(x["soc"], 0, 1))
     r_pack = p["pack_resistance_25c"] * ca.exp(-p["pack_resistance_temp_coeff"] * (x["pack_temp"] - 25))
+    # pack in the loop (kmslap hil): open-circuit voltage and resistance from outside,
+    # each tick (a real cell's, fitted live); off, these are the model's own, bit for bit
+    v_oc = ca.if_else(p["pack_ext"] > 0, p["pack_ext_v_oc"], v_oc)
+    r_pack = ca.if_else(p["pack_ext"] > 0, p["pack_ext_r"], r_pack)
     # BMS undervoltage: no more current than holds the loaded cells at v_cell_min
     i_limit = ca.fmin(p["pack_max_current"],
                       ca.fmax((v_oc - p["pack_series"] * p["pack_v_cell_min"]) / r_pack, 0))

@@ -1,0 +1,81 @@
+VERSION "kms-cell-load 0.1"
+
+NS_ :
+
+BS_:
+
+BU_: HOST RIG
+
+BO_ 1440 LOAD_SETPOINT: 8 HOST
+ SG_ current_setpoint : 0|16@1- (0.01,0) [-327.68|327.67] "A" RIG
+ SG_ enable : 16|1@1+ (1,0) [0|1] "" RIG
+ SG_ counter : 20|4@1+ (1,0) [0|15] "" RIG
+ SG_ slew_limit : 24|16@1+ (10,0) [0|655350] "A/s" RIG
+ SG_ checksum : 56|8@1+ (1,0) [0|255] "" RIG
+
+BO_ 1441 LOAD_LIMITS: 8 HOST
+ SG_ cell_voltage_min : 0|16@1+ (0.001,0) [0|65.535] "V" RIG
+ SG_ cell_voltage_max : 16|16@1+ (0.001,0) [0|65.535] "V" RIG
+ SG_ discharge_current_max : 32|8@1+ (2,0) [0|510] "A" RIG
+ SG_ charge_current_max : 40|8@1+ (2,0) [0|510] "A" RIG
+ SG_ cell_temp_max : 48|8@1+ (1,0) [0|255] "degC" RIG
+
+BO_ 1442 LOAD_COMMAND: 1 HOST
+ SG_ command : 0|8@1+ (1,0) [0|255] "" RIG
+
+BO_ 1448 LOAD_MEASUREMENT: 8 RIG
+ SG_ cell_voltage : 0|16@1+ (0.0001,0) [0|6.5535] "V" HOST
+ SG_ cell_current : 16|16@1- (0.01,0) [-327.68|327.67] "A" HOST
+ SG_ counter : 32|8@1+ (1,0) [0|255] "" HOST
+ SG_ sample_age : 40|16@1+ (1,0) [0|65535] "us" HOST
+ SG_ setpoint_counter_echo : 56|4@1+ (1,0) [0|15] "" HOST
+
+BO_ 1449 LOAD_STATUS: 8 RIG
+ SG_ state : 0|4@1+ (1,0) [0|15] "" HOST
+ SG_ fault_over_voltage : 8|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_under_voltage : 9|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_over_current : 10|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_cell_over_temp : 11|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_stage_over_temp : 12|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_watchdog : 13|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_estop : 14|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_contactor : 15|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_bus : 16|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_measurement : 17|1@1+ (1,0) [0|1] "" HOST
+ SG_ fault_hardware_trip : 18|1@1+ (1,0) [0|1] "" HOST
+ SG_ contactor_closed : 24|1@1+ (1,0) [0|1] "" HOST
+ SG_ bus_voltage : 32|16@1+ (0.01,0) [0|655.35] "V" HOST
+ SG_ stage_temp : 48|8@1+ (1,-40) [-40|215] "degC" HOST
+
+BO_ 1450 LOAD_TEMPERATURES: 8 RIG
+ SG_ cell_temp_1 : 0|16@1- (0.01,0) [-327.68|327.67] "degC" HOST
+ SG_ cell_temp_2 : 16|16@1- (0.01,0) [-327.68|327.67] "degC" HOST
+ SG_ tab_temp_pos : 32|16@1- (0.01,0) [-327.68|327.67] "degC" HOST
+ SG_ tab_temp_neg : 48|16@1- (0.01,0) [-327.68|327.67] "degC" HOST
+
+BO_ 1451 LOAD_COUNTERS: 8 RIG
+ SG_ charge : 0|32@1- (1e-06,0) [-2147.483648|2147.483647] "Ah" HOST
+ SG_ energy : 32|32@1- (1e-05,0) [-21474.83648|21474.83647] "Wh" HOST
+
+CM_ BO_ 1440 "Host -> rig, 1 kHz. The cell current to hold. Positive = discharge (cell -> load), negative = charge (regen). Without a valid one for 20 ms while ARMED or RUNNING the rig faults (watchdog).";
+CM_ SG_ 1440 enable "1: track current_setpoint (ARMED -> RUNNING). 0: hold 0 A (RUNNING -> ARMED).";
+CM_ SG_ 1440 counter "Increments by 1 per message; a repeated or skipped value is logged by the rig (and echoed back), not a fault.";
+CM_ SG_ 1440 slew_limit "Max rate of change the rig applies to the setpoint. 0: the rig's default (10 kA/s).";
+CM_ SG_ 1440 checksum "Sum of bytes 0-6, mod 256. A mismatch: the message is ignored (counts toward the watchdog).";
+CM_ BO_ 1441 "Host -> rig, 1 Hz and on change. Software limits; the rig's hardware trips sit outside them and don't depend on this message. Until received the rig uses its built-in defaults (the COSMX datasheet's).";
+CM_ BO_ 1442 "Host -> rig, on event.";
+CM_ BO_ 1448 "Rig -> host, 1 kHz. Kelvin-sensed at the tabs. sample_age: microseconds from the ADC sample to sending.";
+CM_ BO_ 1449 "Rig -> host, 100 Hz and on any state or fault change. Faults latch until CLEAR_FAULTS.";
+CM_ SG_ 1449 bus_voltage "The intermediate (buffer) bus the converter exchanges energy with.";
+CM_ BO_ 1450 "Rig -> host, 10 Hz.";
+CM_ BO_ 1451 "Rig -> host, 10 Hz. Integrated by the rig from its own samples since ARM (positive = discharged).";
+BA_DEF_ BO_ "GenMsgCycleTime" INT 0 10000;
+BA_DEF_DEF_ "GenMsgCycleTime" 0;
+BA_ "GenMsgCycleTime" BO_ 1440 1;
+BA_ "GenMsgCycleTime" BO_ 1441 1000;
+BA_ "GenMsgCycleTime" BO_ 1448 1;
+BA_ "GenMsgCycleTime" BO_ 1449 10;
+BA_ "GenMsgCycleTime" BO_ 1450 100;
+BA_ "GenMsgCycleTime" BO_ 1451 100;
+VAL_ 1442 command 0 "NONE" 1 "ARM" 2 "DISARM" 3 "CLEAR_FAULTS" 4 "ZERO_CURRENT_OFFSET" ;
+VAL_ 1449 state 0 "BOOT" 1 "IDLE" 2 "ARMED" 3 "RUNNING" 4 "FAULT" ;

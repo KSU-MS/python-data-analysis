@@ -197,6 +197,33 @@ def mcap(track: Annotated[TrackName, typer.Argument()] = TrackName.ac18,
     run(track.value, laps, grip, margin, width=width, out=out, start=start)
 
 
+class PackBackend(str, Enum):
+    sim = "sim"
+    virtual_cell = "virtual-cell"
+    can = "can"
+
+
+@app.command()
+def hil(track: Annotated[TrackName, typer.Argument()] = TrackName.ac18,
+        pack: Annotated[PackBackend, typer.Option(help="sim: the model's pack; virtual-cell: the rig emulator; "
+                                                       "can: the real rig")] = PackBackend.sim,
+        laps: int = 2, grip: float = 0.85,
+        margin: Annotated[float, typer.Option(help="m kept between the car's side and the edge / cones")] = 0.35,
+        regen: bool = True,
+        realtime: Annotated[bool, typer.Option(help="pace to the wall clock (always, with a cell in the loop)")] = True,
+        port: int = 8765, out: str = "hil",
+        can_interface: Annotated[str, typer.Option(help="python-can interface for --pack can")] = "socketcan",
+        can_channel: str = "can0",
+        autostart: Annotated[bool, typer.Option(help="start a run right away, without Foxglove's Start")] = False,
+        once: Annotated[bool, typer.Option(help="exit after one run")] = False):
+    """The lap sim with its battery in the loop (a real cell on the rig, or stand-ins), live in Foxglove."""
+    from kmslap.hil.runner import HilRunner
+    r = HilRunner(track.value, pack.value, laps=laps, grip=grip, margin=margin, regen=regen,
+                  realtime=realtime or pack.value != "sim", port=port, out=out,
+                  can_interface=can_interface, can_channel=can_channel)
+    r.serve(autostart=autostart, once=once)
+
+
 @app.command()
 def birdseye(out: str = "birdseye", gif: Annotated[bool, typer.Option(help="also the lap GIF (~1 min)")] = True):
     """Endurance strategy presets racing a flying lap on Michigan 2026: GIF + speed map."""

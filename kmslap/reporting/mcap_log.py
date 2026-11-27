@@ -22,8 +22,14 @@ charger, inverter parameter access and diagnostics, tire / motor / coolant
 temperatures) aren't written: NOT_SIMULATED lists them. Where a sensor's calibration
 isn't known (raw ADC counts, shock pot travel), the estimate is in the table's notes and
 the file's metadata. Boards are stand-ins; a board's own firmware, run in the loop like
-controller/, can replace one (the VCU first: pedals -> plausibility -> state machine ->
-torque).
+controller/, can replace one.
+
+TODO(firmware in the loop): build the boards' firmware for the PC and run it in the
+sim loop in place of the stand-ins, reading the simulated sensors and putting its own
+CAN frames in the log. The VCU first (KSU-MS/VCU, `kms-vcu`: raw pedal ADC -> travel ->
+plausibility -> state machine -> torque command, so vcu_pedals_travel / vcu_status / M192
+become its output); waits on the ota-sil work there. Then the ACU (shutdown / IMD) and
+the BMS; the dash and module boards only pack readings, the stand-ins do as well.
 
 Rates: what the June 2025 logs measured for the same message (cardata/mcap/
 log_profile.json, under their old names), else an estimate (the DBC has no cycle times).
@@ -281,7 +287,7 @@ def _states(db, d):
     }
 
 
-def _scene(track, car, plan_line=None):
+def track_scene(track, car=None, plan_line=None):
     """Foxglove SceneUpdate of the track (edges, cones, the planned line), frame 'map'."""
     from foxglove_schemas_protobuf.SceneUpdate_pb2 import SceneUpdate
     from foxglove_schemas_protobuf.LinePrimitive_pb2 import LinePrimitive
@@ -309,7 +315,7 @@ def _scene(track, car, plan_line=None):
     return up
 
 
-def _car_scene(car, steer):
+def car_scene(car, steer):
     """Foxglove SceneUpdate of the car in its own frame, front wheels at `steer` (rad)."""
     from foxglove_schemas_protobuf.SceneUpdate_pb2 import SceneUpdate
 
@@ -335,20 +341,52 @@ def _car_scene(car, steer):
 
 
 SIM_STATE_FIELDS = ["speed", "body_slip_deg", "yaw_rate", "steering_wheel_deg", "road_wheel_deg", "ax_g", "ay_g",
-                    "pedal", "brake", "motor_torque", "motor_rpm", "soc", "pack_temp", "lap_time", "lap"]
+                    "pedal", "brake", "motor_torque", "motor_rpm", "soc", "pack_temp", "lap_time", "lap",
+                    "last_lap_time"]
+_MESSAGES = {}
+
+
+def numeric_message(name: str, fields) -> type:
+    """A protobuf message of doubles (kmslap.<name>), built here (no .proto to ship)."""
+    if name not in _MESSAGES:
+        from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
+        fd = descriptor_pb2.FileDescriptorProto(name=f"kmslap_{name}.proto", package="kmslap", syntax="proto3")
+        m = fd.message_type.add(name=name)
+        for i, f in enumerate(fields, 1):
+            m.field.add(name=f, number=i, type=descriptor_pb2.FieldDescriptorProto.TYPE_DOUBLE,
+                        label=descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL)
+        pool = descriptor_pool.DescriptorPool()
+        pool.Add(fd)
+        _MESSAGES[name] = message_factory.GetMessageClass(pool.FindMessageTypeByName(f"kmslap.{name}"))
+    return _MESSAGES[name]
 
 
 def _sim_state_class():
-    """A protobuf message for the sim's ground truth (/sim/state), built here."""
-    from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
-    fd = descriptor_pb2.FileDescriptorProto(name="kmslap_sim.proto", package="kmslap", syntax="proto3")
-    m = fd.message_type.add(name="SimState")
-    for i, name in enumerate(SIM_STATE_FIELDS, 1):
-        m.field.add(name=name, number=i, type=descriptor_pb2.FieldDescriptorProto.TYPE_DOUBLE,
-                    label=descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL)
-    pool = descriptor_pool.DescriptorPool()
-    pool.Add(fd)
-    return message_factory.GetMessageClass(pool.FindMessageTypeByName("kmslap.SimState"))
+    """The sim's ground truth (/sim/state)."""
+    return numeric_message("SimState", SIM_STATE_FIELDS)
+
+
+def sim_state(row, car, lap: float, lap_time: float, last_lap_time: float = 0.0):
+    """/sim/state from a drive log row (a Series or a dict of its columns)."""
+    g = row.get
+    return _sim_state_class()(
+        speed=float(g("speed", math.hypot(g("vx"), g("vy")))), body_slip_deg=math.degrees(float(g("beta", 0.0))),
+        yaw_rate=float(g("r")), steering_wheel_deg=math.degrees(float(g("steering_wheel"))),
+        road_wheel_deg=math.degrees(float(g("steering_wheel")) / car.steer_ratio), ax_g=float(g("ax")) / G,
+        ay_g=float(g("ay")) / G, pedal=float(g("pedal")), brake=float(g("brake")),
+        motor_torque=float(g("motor_torque")), motor_rpm=float(g("motor_rpm")), soc=float(g("soc")),
+        pack_temp=float(g("pack_temp")), lap_time=float(lap_time), lap=float(lap), last_lap_time=float(last_lap_time))
+
+
+def car_pose(x: float, y: float, psi: float, ns: int):
+    """/sim/tf: map -> car."""
+    from foxglove_schemas_protobuf.FrameTransform_pb2 import FrameTransform
+    tf = FrameTransform(parent_frame_id="map", child_frame_id="car")
+    tf.timestamp.FromNanoseconds(ns)
+    tf.translation.x, tf.translation.y = float(x), float(y)
+    q = _quat("z", float(psi))
+    tf.rotation.x, tf.rotation.y, tf.rotation.z, tf.rotation.w = (float(v) for v in q)
+    return tf
 
 
 def layout() -> dict:
@@ -399,13 +437,14 @@ def _quat_mul(a, b):
 
 
 def write(d: pd.DataFrame, track, out, car: Car = None, plan_line=None,
-          start_ns: int | None = None, preroll_s: float = 5.0, seed: int = 0, lap_times=None) -> dict:
+          start_ns: int | None = None, preroll_s: float = 5.0, seed: int = 0, lap_times=None,
+          extra_events=()) -> dict:
     """Write a drive log (driving.drive's DataFrame) as the logger's MCAP plus /sim truth.
     start_ns: the log's start (default now); preroll_s: seconds parked with the inverter
     off before the run, as real logs begin; lap_times: the driver's start/finish
-    crossings (s). Returns {topic: message count}."""
+    crossings (s). extra_events: more (sim time s, topic, protobuf) to write (e.g. a
+    HIL run's /hil topics). Returns {topic: message count}."""
     import cantools
-    from foxglove_schemas_protobuf.FrameTransform_pb2 import FrameTransform
     from foxglove_schemas_protobuf.LocationFix_pb2 import LocationFix
     from mcap_protobuf.writer import Writer
 
@@ -453,32 +492,24 @@ def write(d: pd.DataFrame, track, out, car: Car = None, plan_line=None,
     j = np.clip(np.searchsorted(t, tf_t), 0, len(t) - 1)
     for k in j:
         ns = start_ns + int((t[k] - t[0]) * 1e9)
-        tf = FrameTransform(parent_frame_id="map", child_frame_id="car")
-        tf.timestamp.FromNanoseconds(ns)
-        tf.translation.x, tf.translation.y = float(d.X.iloc[k]), float(d.Y.iloc[k])
-        q = _quat("z", float(d.psi.iloc[k]))
-        tf.rotation.x, tf.rotation.y, tf.rotation.z, tf.rotation.w = (float(v) for v in q)
-        events.append((ns, "/sim/tf", tf))
-        events.append((ns, "/sim/car", _car_scene(car, float(d.steering_wheel.iloc[k]) / car.steer_ratio)))
+        events.append((ns, "/sim/tf", car_pose(d.X.iloc[k], d.Y.iloc[k], d.psi.iloc[k], ns)))
+        events.append((ns, "/sim/car", car_scene(car, float(d.steering_wheel.iloc[k]) / car.steer_ratio)))
         if track.origin is not None and k % 2 == 0:
             lon, lat = track.lonlat(float(d.X.iloc[k]), float(d.Y.iloc[k]))
             fix = LocationFix(latitude=float(lat), longitude=float(lon), frame_id="car")
             fix.timestamp.FromNanoseconds(ns)
             events.append((ns, "/sim/location", fix))
-    State = _sim_state_class()
     starts = np.r_[0.0, np.asarray(lap_times or [], float)]
     lap_no = np.searchsorted(starts, t, side="right") - 1
     lap_t = t - starts[np.maximum(lap_no, 0)]
+    laps_done = np.diff(starts)
     for k in np.clip(np.searchsorted(t, np.arange(t[0], t[-1], 1 / 50)), 0, len(t) - 1):
         ns = start_ns + int((t[k] - t[0]) * 1e9)
-        row = d.iloc[k]
-        events.append((ns, "/sim/state", State(
-            speed=float(row.get("speed", math.hypot(row.vx, row.vy))), body_slip_deg=math.degrees(float(row.get("beta", 0.0))),
-            yaw_rate=float(row.r), steering_wheel_deg=math.degrees(float(row.steering_wheel)),
-            road_wheel_deg=math.degrees(float(row.steering_wheel) / car.steer_ratio), ax_g=float(row.ax) / G, ay_g=float(row.ay) / G,
-            pedal=float(row.pedal), brake=float(row.brake), motor_torque=float(row.motor_torque), motor_rpm=float(row.motor_rpm),
-            soc=float(row.soc), pack_temp=float(row.pack_temp), lap_time=float(lap_t[k]), lap=float(lap_no[k]))))
-    events.append((start_ns, "/sim/track", _scene(track, car, plan_line)))
+        last = laps_done[lap_no[k] - 1] if lap_no[k] >= 1 else 0.0
+        events.append((ns, "/sim/state", sim_state(d.iloc[k], car, lap_no[k], lap_t[k], last)))
+    for ts, topic, pb in extra_events:
+        events.append((start_ns + int((ts - t[0]) * 1e9), topic, pb))
+    events.append((start_ns, "/sim/track", track_scene(track, car, plan_line)))
     events.sort(key=lambda e: e[0])
     counts = {}
     with open(out, "wb") as f:

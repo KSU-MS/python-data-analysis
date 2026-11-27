@@ -11,6 +11,7 @@ through the VCU controller, into vehicle.py's model.
     accel drive --out drive.png     # skidpad + a lap, plotted
 """
 import math
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -33,7 +34,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
           t_max: float = 60.0, driver_period: float = 0.01, log_period: float = 0.01,
           vx0: float = 0.0, soc0: float = 1.0, pack_temp0: float | None = None,
           relaxation_length: float = 0.15, relaxation_length_lat: float = 0.3,
-          drs=None, regen=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0) -> DriveResult:
+          drs=None, regen=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0,
+          pack_backend=None, realtime: bool = False, on_tick=None) -> DriveResult:
     """Run until the driver is done or t_max.
 
     The driver's pedal maps linearly to a torque request (0..motor peak), as the VCU's
@@ -49,6 +51,15 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     regen: a driver.RegenPolicy turns regen on: off throttle, its negative torque
     command goes to the inverter (straight from the policy; the C++ controller only
     handles drive torque so far). None: no regen, the model is motoring-only.
+
+    pack_backend: the pack in the loop (kmslap.hil): every pack_backend.period s of sim
+    time it gets the current the car draws and returns the pack's open-circuit voltage,
+    resistance, state of charge and temperature, which replace the model's own. None:
+    the model's pack.
+    realtime: run no faster than the wall clock (a real cell in the loop).
+    on_tick(t, state, out, inputs): called at the driver rate (state / out by
+    twotrack.STATES / OUTPUTS, inputs a dict of the driver's and the command); a true
+    return stops the run.
     """
     car = car or Car()
     motor = MotorMap(motor) if isinstance(motor, str) else motor
@@ -63,7 +74,20 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
         vehicle.initial_state(car, pack, vx=vx0, soc=soc0, pack_temp=pack_temp0, X=X0, Y=Y0,
                               psi=psi0))
 
-    S, O = vehicle.STATES, vehicle.OUTPUTS
+    S, O, P = vehicle.STATES, vehicle.OUTPUTS, vehicle.PARAMS
+    if pack_backend is not None:
+        ext = pack_backend.start(pack, soc0, pack.ambient_c if pack_temp0 is None else pack_temp0)
+        plant.set_param(P.index("pack_ext"), 1.0)
+        plant.set_param(P.index("pack_ext_v_oc"), ext["v_oc"])
+        plant.set_param(P.index("pack_ext_r"), ext["r"])
+    i_ext_v, i_ext_r = P.index("pack_ext_v_oc"), P.index("pack_ext_r")
+    isoc, itemp, ibus = S.index("soc"), S.index("pack_temp"), S.index("bus_v")
+    icur = O.index("bus_i")
+    next_pack = next_pace = 0.0
+    # in real time, keep pace at the pack's rate (a rig expects its setpoints evenly)
+    pace_period = pack_backend.period if pack_backend is not None else driver_period
+    wall0 = time.perf_counter()
+    lateness = 0.0
     iX, iY, ipsi, ivx, ivy, ir = (S.index(k) for k in ("X", "Y", "psi", "vx", "vy", "r"))
     iw = [S.index(f"omega_{w}") for w in vehicle.WHEELS]
     iax, iay, itq = O.index("ax"), O.index("ay"), O.index("motor_torque")
@@ -77,12 +101,32 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     t, next_driver, next_log = 0.0, 0.0, 0.0
     rows = []
     for _ in range(int(t_max / dt)):
+        if realtime and t >= next_pace - 1e-12:
+            next_pace += pace_period
+            ahead = wall0 + t - time.perf_counter()
+            if ahead > 0.002:
+                time.sleep(ahead - 0.001)
+            while time.perf_counter() < wall0 + t:
+                pass
+            lateness = max(-ahead, 0.0)
+        if pack_backend is not None and t >= next_pack - 1e-12:
+            next_pack += pack_backend.period
+            ext = pack_backend.exchange(t, out[icur], state[ibus])
+            plant.set_param(i_ext_v, ext["v_oc"])
+            plant.set_param(i_ext_r, ext["r"])
+            plant.set_state(isoc, ext["soc"])
+            plant.set_state(itemp, ext["temp"])
+            state = plant.state
         if t >= next_driver - 1e-12:
             next_driver += driver_period
             obs = {"X": state[iX], "Y": state[iY], "psi": state[ipsi], "vx": state[ivx],
                    "vy": state[ivy], "r": state[ir], "ax": out[iax], "ay": out[iay]}
             pedal, brake, sw = driver(t, obs)
             if driver.done:
+                break
+            if on_tick is not None and on_tick(t, state, out, {"pedal": pedal, "brake": brake,
+                                                                "steering_wheel": sw, "drs": wing,
+                                                                "lateness": lateness}):
                 break
             if drs is not None:
                 wing_target = drs(obs, pedal, brake, sw)
