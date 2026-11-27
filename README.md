@@ -311,6 +311,25 @@ The remote, once (Windows: WSL2 Ubuntu):
 Parallel jobs (`accel.strategy`, Monte Carlo) use all the remote's cores
 (`--workers`).
 
+**Both machines at once:** `accel/cluster.py` spreads independent tasks over this
+machine and remotes: a task queue here (stdlib `multiprocessing.managers`), one worker
+per core on each machine pulling from it (faster machines take more), remotes reached
+through an SSH reverse tunnel with the working tree pushed as above. In a terminal it
+shows a live dashboard (per-core load per machine, each worker's task and elapsed time,
+progress, throughput, ETA); `save_timeline()` plots every task on every worker and the
+CPU load.
+
+```sh
+python -m accel.strategy --regen --out strategy --remote mathewos@desktop-17id03o-2
+python -m accel.cluster selftest --remote mathewos@desktop-17id03o-2   # try the dashboard
+python -m accel.bench single|parallel|cluster --out bench/              # benchmarks
+```
+
+Benchmarks (Nov 2026): the laptop (Ryzen 5 7640U, 12 threads) runs single sims ~25%
+faster than the desktop's WSL (Ryzen 7 5800XT, 16 threads); in parallel they're even,
+1.33 vs 1.28 strategy evaluations/s; the cluster ran both at 2.41/s, 93% of their sum
+(the rest is start-up and the last tasks finishing).
+
 ## Car data to collect
 
 TODO: everything the sim uses that hasn't been measured on the current car. Values in

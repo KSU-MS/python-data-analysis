@@ -8,7 +8,7 @@ margin before the BMS undervoltage limit cuts power). Search: a coarse grid of p
 coast x DRS on/off, then the DRS parameters around the best, then (--regen) regen
 strategies on top, run in parallel; the winners are checked with full events.
 
-    python -m accel.strategy --out strategy/ [--regen]
+    python -m accel.strategy --out strategy/ [--regen] [--remote mathewos@desktop-17id03o-2]
 """
 import argparse
 import itertools
@@ -85,9 +85,21 @@ def evaluate(c: dict) -> dict:
             "objective": time + PENALTY_S_PER_SOC * short}
 
 
-def _run(cands, workers):
+_cluster = None   # an accel.cluster.Cluster to run on instead of a local pool
+
+
+def _map(fn, cands, workers):
+    if _cluster is not None:
+        labels = [f"pace {c['margin']:.2f} coast {c['coast_time']:.1f}"
+                  f"{' DRS' if c['drs'] else ''}{' regen' if c.get('regen') else ''}" for c in cands]
+        return _cluster.map(f"accel.strategy:{fn.__name__}", cands, labels=labels,
+                            title=f"strategy: {fn.__name__}")
     with ProcessPoolExecutor(workers) as ex:
-        return pd.DataFrame(list(ex.map(evaluate, cands)))
+        return list(ex.map(fn, cands))
+
+
+def _run(cands, workers):
+    return pd.DataFrame(_map(evaluate, cands, workers))
 
 
 def full_event(c: dict) -> dict:
@@ -153,8 +165,7 @@ def tune(workers: int | None = None, soc_floor: float = SOC_FLOOR, regen: bool =
              "best with default DRS": results[(results.stage == 1) & results.drs].iloc[0]}
     if not regen:
         picks.pop("best without regen")
-    with ProcessPoolExecutor(workers) as ex:
-        confirmed = pd.DataFrame(list(ex.map(full_event, [_candidate(p) for p in picks.values()])))
+    confirmed = pd.DataFrame(_map(full_event, [_candidate(p) for p in picks.values()], workers))
     confirmed.insert(0, "pick", list(picks))
     return results, confirmed
 
@@ -171,13 +182,24 @@ def main():
     ap.add_argument("--out", default="strategy")
     ap.add_argument("--workers", type=int, default=None, help="default: all cores")
     ap.add_argument("--regen", action="store_true", help="also search regen strategies")
+    ap.add_argument("--remote", action="append", default=[],
+                    help="also run on this host (accel.remote / accel.cluster), repeatable")
     ap.add_argument("--soc-floor", type=float, default=SOC_FLOOR,
                     help="planning reserve: SOC the event must end above")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     gg_envelope(Car())       # solve / cache once before the workers need it
-    results, confirmed = tune(args.workers, args.soc_floor, regen=args.regen)
+    global _cluster
+    if args.remote:
+        from .cluster import Cluster
+        _cluster = Cluster(local_workers=args.workers, remotes=args.remote).__enter__()
+    try:
+        results, confirmed = tune(args.workers, args.soc_floor, regen=args.regen)
+    finally:
+        if _cluster is not None:
+            _cluster.__exit__(None, None, None)
+            _cluster.save_timeline(out / "cluster_timeline.png")
     results.to_csv(out / "candidates.csv", index=False)
     confirmed.to_csv(out / "confirmed.csv", index=False)
     with pd.option_context("display.width", 220, "display.max_columns", 30):

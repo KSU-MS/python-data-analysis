@@ -27,6 +27,7 @@ dependencies = [
     "pyserial>=3.5",
     "requests>=2.31",
     "casadi>=3.6",
+    "rich>=13",
 ]
 
 [dependency-groups]
