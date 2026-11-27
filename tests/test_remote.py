@@ -14,10 +14,9 @@ def test_snapshot_is_a_commit_of_the_tree():
 
 
 def test_job_script():
-    s = remote.job_script("python-data-analysis", "abc123", ["python", "-m", "accel.strategy",
-                                                             "--out", "my dir"], use_uv=False)
+    s = remote.job_script("python-data-analysis", "abc123", ["accel", "strategy", "--out", "my dir"], use_uv=False)
     assert "checkout -q --detach abc123" in s
-    assert "nix develop -c python -m accel.strategy --out 'my dir'" in s
+    assert "nix develop -c accel strategy --out 'my dir'" in s
     assert s.startswith("set -e")
     assert "uv run python" in remote.job_script("d", "abc", ["python"], use_uv=True)
     # the whole script survives being passed as one ssh argument

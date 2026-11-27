@@ -1,8 +1,8 @@
 """Replay accel runs in Rerun (https://rerun.io): a 3D drag race, one lane per run,
 with plots synced to the same timeline.
 
-    python -m accel.viz                    # open the viewer with the standard comparison
-    python -m accel.viz --save runs.rrd    # or save, then `rerun runs.rrd`
+    accel viz                    # open the viewer with the standard comparison
+    accel viz --save runs.rrd    # or save, then `rerun runs.rrd`
 
 Or from Python/the notebook:
 
@@ -11,7 +11,6 @@ Or from Python/the notebook:
 Rear wheels are drawn with a spoke so wheelspin shows as the rear spokes outrunning the
 fronts; arrows show the rear tire force (forward) and rear axle load (down).
 """
-import argparse
 import subprocess
 import tempfile
 
@@ -20,7 +19,7 @@ import rerun as rr
 import rerun.blueprint as rrb
 
 from .params import G, Car
-from .sim import LENGTH, STAGE, Result
+from .sim import LENGTH, STAGE
 
 LANE_SPACING = 3.0     # m between lanes
 PITCH_PER_G = 0.04     # rad of body pitch per g, exaggerated so it's visible
@@ -186,17 +185,11 @@ def standard_runs(car: Car = None) -> dict:
     }
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--save", metavar="RRD", help="write an .rrd instead of opening the viewer")
-    p.add_argument("--fd", type=float, default=Car.final_drive)
-    args = p.parse_args()
-    car = Car(final_drive=args.fd).open_aero()
+def run(save: str | None = None, fd: float = Car.final_drive):
+    """No TC vs the VCU controllers as a 3D drag race; save: write an .rrd instead."""
+    car = Car(final_drive=fd).open_aero()
     runs = standard_runs(car)
     for name, res in runs.items():
         print(f"{name:18s} {res.accel_time:.3f} s")
-    show_runs(runs, car, save=args.save)
+    show_runs(runs, car, save=save)
 
-
-if __name__ == "__main__":
-    main()

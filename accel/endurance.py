@@ -6,10 +6,9 @@ temperature and capacity, driving style and drag matter most.
     res.summary        # time, energy, SOC, pack temperature, drag energy, lap times
     res.df             # the whole run, both stints
 
-    python -m accel.endurance --out endurance.png
+    accel endurance --out endurance.png
         # wing closed, wing set open by hand, DRS, lift-and-coast
 """
-import argparse
 import math
 from dataclasses import dataclass
 
@@ -92,24 +91,19 @@ def endurance(car: Car = None, *, laps: int = 18, margin: float = 0.8, coast_tim
     return EnduranceResult(df, summary, lap_times)
 
 
-def main():
+def compare(laps: int = 18, margin: float = 0.8, out: str = "endurance.png"):
+    """Wing closed / open / DRS / lift-and-coast over the event, plotted into `out`."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--laps", type=int, default=18)
-    ap.add_argument("--margin", type=float, default=0.8)
-    ap.add_argument("--out", default="endurance.png")
-    args = ap.parse_args()
 
     car, open_car = Car(), Car().open_aero()
     path = michigan_2026_endurance()
     # each aero setup drives to its own envelope; DRS closes for corners, so the
     # closed wing's
-    speed = speed_profile(path, gg_envelope(car), margin=args.margin)
-    speed_open = speed_profile(path, gg_envelope(open_car), margin=args.margin)
-    common = dict(laps=args.laps, path=path)
+    speed = speed_profile(path, gg_envelope(car), margin=margin)
+    speed_open = speed_profile(path, gg_envelope(open_car), margin=margin)
+    common = dict(laps=laps, path=path)
     runs = {
         "wing closed": endurance(car, speed=speed, label="wing closed", **common),
         "wing open (set by hand)": endurance(open_car, speed=speed_open, label="wing open", **common),
@@ -137,10 +131,7 @@ def main():
                                              ("lap times", "lap", "s"), ("lap 1 line", "m", "m")]):
         ax.set(title=title, xlabel=x, ylabel=y)
         ax.grid(alpha=0.3)
-    fig.suptitle(f"FSAE Michigan 2026 EV endurance, {args.laps} laps at {args.margin:.0%} of the grip envelope")
+    fig.suptitle(f"FSAE Michigan 2026 EV endurance, {laps} laps at {margin:.0%} of the grip envelope")
     fig.tight_layout()
-    fig.savefig(args.out)
+    fig.savefig(out)
 
-
-if __name__ == "__main__":
-    main()

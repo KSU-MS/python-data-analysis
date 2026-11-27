@@ -2,7 +2,6 @@
 name = "python-data-analysis"
 version = "0.1.0"
 description = "FSAE EV performance analysis: accel event sim, VCU launch/traction controller, log tooling"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     # sim
@@ -28,15 +27,28 @@ dependencies = [
     "requests>=2.31",
     "casadi>=3.6",
     "rich>=13",
+    "typer>=0.12",
 ]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
 
-[tool.uv]
-# Not an installable package: modules live at the repo root and are imported from
-# there. uv just manages the environment.
-package = false
+[project.scripts]
+accel = "accel.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Installed editable (uv sync; the Nix shell via uv2nix's editable overlay) so the
+# `accel` command exists for tab completion. Code is always run from the repo: the
+# editable install puts the repo root on sys.path (dev-mode-dirs), where accel/ and
+# the older root modules it uses (motor.py, battery.py, tire/) and its data live.
+[tool.hatch.build]
+dev-mode-dirs = ["."]
+
+[tool.hatch.build.targets.wheel]
+packages = ["accel"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

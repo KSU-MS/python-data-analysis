@@ -47,8 +47,26 @@
               autoPatchelfIgnoreMissingDeps = true;
             });
           };
+          # this project, installed editable (so `accel` is a command, with completion)
+          # pointing at the checkout: code edits apply without rebuilding the env
+          editable = workspace.mkEditablePyprojectOverlay { root = "$REPO_ROOT"; };
+          editableBuild = final: prev: {
+            python-data-analysis = prev.python-data-analysis.overrideAttrs (old: {
+              # only what hatchling reads to build the editable wheel
+              src = lib.fileset.toSource {
+                root = old.src;
+                fileset = lib.fileset.unions [
+                  (old.src + "/pyproject.toml")
+                  (old.src + "/accel/__init__.py")
+                ];
+              };
+              nativeBuildInputs = old.nativeBuildInputs ++ final.resolveBuildSystem { editables = [ ]; };
+            });
+          };
           pythonSet = (pkgs.callPackage pyproject-nix.build.packages { inherit python; }).overrideScope
-            (lib.composeManyExtensions [ pyproject-build-systems.overlays.default overlay wheelLibs ]);
+            (lib.composeManyExtensions [
+              pyproject-build-systems.overlays.default overlay wheelLibs editable editableBuild
+            ]);
         in
         pythonSet.mkVirtualEnv "python-data-analysis-env" workspace.deps.all;
     in {
@@ -66,6 +84,8 @@
             UV_PROJECT_ENVIRONMENT = "${venv}";
           };
           shellHook = ''
+            # the editable install of this project resolves to here
+            export REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
             export PYTHONPATH="$PWD''${PYTHONPATH:+:$PYTHONPATH}"
             export UV_PYTHON="${venv}/bin/python"
             # strip notebook outputs on commit (see .gitattributes). Uses the

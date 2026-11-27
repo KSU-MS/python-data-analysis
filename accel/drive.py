@@ -7,9 +7,8 @@ through the VCU controller, into vehicle.py's model.
     res.df          # logged every log_period: positions, speeds, per-wheel slip and
                     # forces, motor, pack SOC / temperature, driver inputs
 
-    python -m accel.drive --out drive.png     # skidpad + a lap, plotted
+    accel drive --out drive.png     # skidpad + a lap, plotted
 """
-import argparse
 import math
 from dataclasses import dataclass
 
@@ -118,17 +117,14 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     return DriveResult(df, controller.log_frame() if controller is not None else None)
 
 
-def main():
+def demo(out: str = "drive.png"):
+    """Skidpad and a short course, plotted into `out`."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     from .driver import Path, PathFollower, skidpad
     from .envelope import gg_envelope, speed_profile
-
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default="drive.png")
-    args = ap.parse_args()
 
     car = Car()
     pad = skidpad()
@@ -158,13 +154,10 @@ def main():
         ax.set(title=title, ylabel=y)
         ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(args.out)
+    fig.savefig(out)
     for name, res in runs.items():
         d = res.df
         print(f"{name}: {d.t.iloc[-1]:.1f} s, peak ay {d.ay.abs().max() / 9.81:.2f} g, "
               f"pack {d.pack_temp.iloc[0]:.1f} -> {d.pack_temp.iloc[-1]:.2f} C, "
               f"SOC {100 * d.soc.iloc[0]:.1f} -> {100 * d.soc.iloc[-1]:.2f}%")
 
-
-if __name__ == "__main__":
-    main()

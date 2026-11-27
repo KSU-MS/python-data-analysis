@@ -1,9 +1,9 @@
 """Benchmarks: how fast a machine runs our sims, alone and in parallel, and the
 cluster across machines.
 
-    python -m accel.bench single  --out bench/        # single-thread timings
-    python -m accel.bench parallel --n 96 --out bench/  # strategy evaluations, all cores
-    python -m accel.bench cluster --n 192 --remote mathewos@desktop-17id03o-2 --out bench/
+    accel bench single  --out bench/        # single-thread timings
+    accel bench parallel --n 96 --out bench/  # strategy evaluations, all cores
+    accel bench cluster --n 192 --remote mathewos@desktop-17id03o-2 --out bench/
 
 single:   1D accel run, VCU controller in the loop, one double-track lap of the
           endurance line, a small grip envelope solve (best of a few repeats).
@@ -13,7 +13,6 @@ cluster:  the same candidates through accel.cluster across this machine and the
           remotes (live dashboard in a terminal); also saves a timeline plot.
 Each writes a JSON (machine, cores, timings) into --out.
 """
-import argparse
 import itertools
 import json
 import math
@@ -117,28 +116,20 @@ def cluster(n: int, remotes: list[str], local_workers: int | None, timeline: Pat
     return {"n": n, "hosts": c.hosts, "tasks_per_host": per_host, "wall_s": el, "evals_per_s": n / el}
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("what", choices=["single", "parallel", "cluster"])
-    ap.add_argument("--n", type=int, default=96)
-    ap.add_argument("--workers", type=int, default=None)
-    ap.add_argument("--remote", action="append", default=[])
-    ap.add_argument("--out", default="bench")
-    args = ap.parse_args()
-    out = Path(args.out)
+def record(what: str, n: int = 96, workers: int | None = None, remote: list[str] = (),
+           out: str = "bench") -> dict:
+    """Run one benchmark (single / parallel / cluster), save and print its JSON."""
+    out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     m = _machine()
-    if args.what == "single":
+    if what == "single":
         res = single()
-    elif args.what == "parallel":
-        res = parallel(args.n, args.workers)
+    elif what == "parallel":
+        res = parallel(n, workers)
     else:
-        res = cluster(args.n, args.remote, args.workers, out / "cluster_timeline.png")
-    rec = {"machine": m, "bench": args.what, **res}
-    name = f"{args.what}_{m['host']}.json"
-    (out / name).write_text(json.dumps(rec, indent=1, default=str))
+        res = cluster(n, list(remote), workers, out / "cluster_timeline.png")
+    rec = {"machine": m, "bench": what, **res}
+    (out / f"{what}_{m['host']}.json").write_text(json.dumps(rec, indent=1, default=str))
     print(json.dumps(rec, indent=1, default=str))
+    return rec
 
-
-if __name__ == "__main__":
-    main()

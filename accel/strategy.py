@@ -8,9 +8,8 @@ margin before the BMS undervoltage limit cuts power). Search: a coarse grid of p
 coast x DRS on/off, then the DRS parameters around the best, then (--regen) regen
 strategies on top, run in parallel; the winners are checked with full events.
 
-    python -m accel.strategy --out strategy/ [--regen] [--remote mathewos@desktop-17id03o-2]
+    accel strategy --out strategy/ [--regen] [--remote mathewos@desktop-17id03o-2]
 """
-import argparse
 import itertools
 import math
 from concurrent.futures import ProcessPoolExecutor
@@ -170,7 +169,9 @@ def tune(workers: int | None = None, soc_floor: float = SOC_FLOOR, regen: bool =
     return results, confirmed
 
 
-def main():
+def run(out: str = "strategy", workers: int | None = None, regen: bool = False,
+        remote: list[str] = (), soc_floor: float = SOC_FLOOR):
+    """Tune, write candidates / confirmed CSVs and the trade-off plot into `out`."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -178,24 +179,15 @@ def main():
     from .envelope import gg_envelope
     from .params import Car
 
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default="strategy")
-    ap.add_argument("--workers", type=int, default=None, help="default: all cores")
-    ap.add_argument("--regen", action="store_true", help="also search regen strategies")
-    ap.add_argument("--remote", action="append", default=[],
-                    help="also run on this host (accel.remote / accel.cluster), repeatable")
-    ap.add_argument("--soc-floor", type=float, default=SOC_FLOOR,
-                    help="planning reserve: SOC the event must end above")
-    args = ap.parse_args()
-    out = Path(args.out)
+    out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     gg_envelope(Car())       # solve / cache once before the workers need it
     global _cluster
-    if args.remote:
+    if remote:
         from .cluster import Cluster
-        _cluster = Cluster(local_workers=args.workers, remotes=args.remote).__enter__()
+        _cluster = Cluster(local_workers=workers, remotes=list(remote)).__enter__()
     try:
-        results, confirmed = tune(args.workers, args.soc_floor, regen=args.regen)
+        results, confirmed = tune(workers, soc_floor, regen=regen)
     finally:
         if _cluster is not None:
             _cluster.__exit__(None, None, None)
@@ -212,7 +204,7 @@ def main():
         r = results[(results.drs == drs) & results.finished_2]
         ax.scatter(100 * r.soc_end, r.event_time_s, s=12, color=c, alpha=0.6,
                    label="DRS" if drs else "no DRS")
-    ax.axvline(100 * args.soc_floor, color="k", ls=":", lw=1, label="SOC floor")
+    ax.axvline(100 * soc_floor, color="k", ls=":", lw=1, label="SOC floor")
     ax.set(xlabel="projected SOC at the end of the event (%)", ylabel="projected event time (s)",
            title="Endurance strategies: pace x lift-and-coast x DRS (2-lap projections)")
     ax.legend()
@@ -220,6 +212,3 @@ def main():
     fig.tight_layout()
     fig.savefig(out / "tradeoff.png")
 
-
-if __name__ == "__main__":
-    main()

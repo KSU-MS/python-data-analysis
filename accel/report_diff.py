@@ -1,11 +1,10 @@
 """Compare two accel.report metrics.json files as a markdown table.
 
-    python -m accel.report_diff base/metrics.json head/metrics.json [--artifact-url URL]
+    accel report-diff base/metrics.json head/metrics.json [--artifact-url URL]
 
 CI runs the report on a pull request's base and head and posts this as a PR
 comment. The sims are deterministic, so any change is from the code, not noise.
 """
-import argparse
 import json
 from pathlib import Path
 
@@ -71,20 +70,13 @@ def diff(base: dict, head: dict, artifact_url: str | None = None) -> str:
     return "\n".join(out) + "\n"
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("base")
-    p.add_argument("head")
-    p.add_argument("--artifact-url")
-    args = p.parse_args()
-    head = json.loads(Path(args.head).read_text())
-    base_path = Path(args.base)
+def run(base: str, head: str, artifact_url: str | None = None):
+    """Print the comparison of two metrics.json files (base may not exist yet)."""
+    head = json.loads(Path(head).read_text())
+    base_path = Path(base)
     if not base_path.exists():
         print(f"{MARKER}\n## Accel sim: this PR vs base\n\nThe base branch's report has no "
               "`metrics.json` (it predates the comparison), so there's nothing to compare yet.")
         return
-    print(diff(json.loads(base_path.read_text()), head, args.artifact_url), end="")
+    print(diff(json.loads(base_path.read_text()), head, artifact_url), end="")
 
-
-if __name__ == "__main__":
-    main()

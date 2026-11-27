@@ -1,6 +1,6 @@
 """Run the headline sims and write viewable artifacts plus a markdown summary.
 
-    python -m accel.report --out report/
+    accel report --out report/
 
 Writes into --out:
     drag_race.gif        no TC vs the VCU controllers racing the 75 m, rear wheels
@@ -16,10 +16,9 @@ Writes into --out:
                          (exact gradients through the CasADi model)
     summary.md           tables + Mermaid charts (GitHub renders these inline; CI
                          appends this to the job summary)
-    metrics.json         headline numbers; `python -m accel.report_diff` compares
+    metrics.json         headline numbers; `accel report-diff` compares
                          two of these (CI posts that on pull requests)
 """
-import argparse
 import dataclasses
 import json
 import math
@@ -296,12 +295,9 @@ def _mermaid_lines(title, x, series, y_label):
     return out
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out", default="report")
-    p.add_argument("--plants", type=int, default=20, help="Monte Carlo plants")
-    args = p.parse_args()
-    out = Path(args.out)
+def run(out: str = "report", plants: int = 20):
+    """Write the report into `out`; plants: Monte Carlo plants."""
+    out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     # accel: wing set open (lowest drag), and the controller configured to match
@@ -350,10 +346,10 @@ def main():
     fw = lambda mode: (lambda pl: dict(controller=FirmwareController(
         mode=mode, belief=car, sensors=Sensors(vn_accel_bias=pl.vn_accel_bias))))
     strategies = {"no TC": lambda pl: {}, "VCU slip_pi": fw("slip_pi"), "VCU mu_adaptive": fw("mu_adaptive")}
-    mc = monte_carlo(strategies, sample_plants(args.plants, car), motor)
+    mc = monte_carlo(strategies, sample_plants(plants, car), motor)
     cols = list(strategies)
     _fig_robustness(mc, cols, out / "robustness.png")
-    md += ["", f"## Robustness ({args.plants} plants, every coefficient off)", "",
+    md += ["", f"## Robustness ({plants} plants, every coefficient off)", "",
            "| controller | mean | p90 | worst |", "|---|---|---|---|"]
     for c in cols:
         md.append(f"| {c} | {mc[c].mean():+.2f}% | {mc[c].quantile(0.9):+.2f}% | {mc[c].max():+.2f}% |")
@@ -431,6 +427,3 @@ def main():
     if not identical:
         raise SystemExit("log replay did not reproduce the controller's outputs")
 
-
-if __name__ == "__main__":
-    main()

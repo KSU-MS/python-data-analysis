@@ -1,7 +1,6 @@
 """The CasADi plant model: compiled step, rollout gradients, cache reuse."""
 import dataclasses
 
-import casadi as ca
 import numpy as np
 import pytest
 

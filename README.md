@@ -99,18 +99,29 @@ megabytes of plots.
 
 ## Quick start
 
-From the Nix dev shell, or without Nix prefix each command with `uv run`
-(e.g. `uv run python -m accel ...`):
+Everything runs through one command, `accel`, with tab completion for commands, options,
+choices (motors, packs) and Tailscale hosts. It's on PATH in the Nix dev shell (an
+editable install of this repo, so code edits apply immediately). Without Nix, `uv sync`
+installs it into `.venv/bin`: activate the venv to use it as `accel` (with completion),
+or prefix with `uv run`. Turn completion on once:
+
+```sh
+accel --install-completion      # zsh / bash / fish; restart the shell
+accel --help                    # commands: sim report report-diff viz drive endurance
+                                # strategy bench remote cluster
+```
+
+`python -m accel ...` is the same command.
 
 ```sh
 # accel times for a few final drives: ideal TC vs no TC vs TC
-python -m accel --fd 2.4 3.0 4.0
+accel sim 2.4 3.0 4.0
 
 # same, saving speed / accel / torque / slip traces
-python -m accel --fd 3.0 --plot run.png
+accel sim 3.0 --plot run.png
 
 # 3D drag race replay of no TC vs the VCU controllers (opens the Rerun viewer)
-python -m accel.viz
+accel viz
 
 # the main notebook: traces, KS5e / OptimumLap validation, launch strategies,
 # the C++ controller in the loop, Monte Carlo, the log -> fit -> retune loop
@@ -187,7 +198,7 @@ acceleration, required to be stable (no drifts the driver would have to catch).
 `envelope.speed_profile(path, env)` turns it into a speed target along a path (90% of the
 envelope by default: what the driver holds in steady cornering in the time-domain model).
 The envelope takes ~2 minutes and is cached in `build/envelope/`.
-`python -m accel.drive --out drive.png` plots a skidpad and a short course. With straight
+`accel drive --out drive.png` plots a skidpad and a short course. With straight
 steering it reproduces the accel model's times; the tests check steady cornering, left/right
 symmetry, pack charge and heat bookkeeping and the diff.
 
@@ -201,7 +212,7 @@ The pack discharges and heats (I²R, passive cooling only) and its BMS undervolt
 cuts power as it empties, so a car that uses too much energy slows and stops short.
 
 ```sh
-python -m accel.endurance --out endurance.png
+accel endurance --out endurance.png
 # wing closed, wing set open by hand, DRS, wing closed + lift-and-coast
 ```
 
@@ -228,7 +239,7 @@ top of the friction brakes (from the front/rear pressure sensors), capped by
 The C++ controller only handles drive torque so far: regen commands go straight to the
 inverter.
 
-**Strategy tuning:** `python -m accel.strategy --out strategy/ [--regen]` searches pace
+**Strategy tuning:** `accel strategy --out strategy/ [--regen]` searches pace
 (fraction of the grip envelope), lift-and-coast, DRS policy parameters and (with
 `--regen`) regen strategies for the fastest event that still finishes with a 10% SOC
 reserve. Candidates are scored on 2 laps projected to the event (energy from the cells
@@ -265,19 +276,19 @@ meant to compile into the VCU.
 
 ## Visualization
 
-`python -m accel.viz` replays no TC vs the VCU controllers as a 3D drag race in [Rerun](https://rerun.io)
+`accel viz` replays no TC vs the VCU controllers as a 3D drag race in [Rerun](https://rerun.io)
 (one lane per run, body pitch from load transfer, spoked wheels so rear wheelspin is visible, arrows for rear
 tire force and load) with speed / accel / slip / torque / TC / learned mu plots on the same timeline.
 `--save runs.rrd` writes the recording instead; open it later with `rerun runs.rrd`. From code,
 `accel.viz.show_runs({"name": result, ...}, car)`.
 
-`python -m accel.report --out report/` runs the headline sims and writes a drag race GIF
+`accel report --out report/` runs the headline sims and writes a drag race GIF
 (rear wheels colored by slip), launch / final drive / robustness / controller-vs-truth /
 system ID / gear ratio check / sensitivity ("what to measure next": seconds of accel time
 each uncertain coefficient is worth) plots, a `summary.md` and a `metrics.json`. CI runs it on
 every push: the tables and charts are on the run's summary page, and the GIF and plots are
 in the `accel-report` artifact. On pull requests CI also runs the base branch's report and
-posts `python -m accel.report_diff base/metrics.json report/metrics.json` as a PR comment
+posts `accel report-diff base/metrics.json report/metrics.json` as a PR comment
 (accel times, robustness, system ID error, ... better / worse than base), updated on each push.
 
 The Rerun viewer sends anonymous usage stats by default (features used, not your data);
@@ -289,10 +300,10 @@ The Rerun viewer sends anonymous usage stats by default (features used, not your
 `desktop-17id03o-2` on Tailscale) on exactly your working tree, and copies results back:
 
 ```sh
-python -m accel.remote setup        # once: checks git + nix, clones, builds the env
-python -m accel.remote run --fetch strategy -- python -m accel.strategy --regen --out strategy
-python -m accel.remote run --detach --fetch strategy -- python -m accel.strategy --out strategy
-python -m accel.remote log          # follow a detached job; then: fetch strategy
+accel remote setup        # once: checks git + nix, clones, builds the env
+accel remote run --fetch strategy -- accel strategy --regen --out strategy
+accel remote run --detach --fetch strategy -- accel strategy --out strategy
+accel remote log          # follow a detached job; then: fetch strategy
 ```
 
 It snapshots tracked files including uncommitted edits (`git stash create`, your branch
@@ -306,7 +317,7 @@ The remote, once (Windows: WSL2 Ubuntu):
    (`sudo apt install openssh-server && sudo service ssh start`), git, and Nix with
    flakes (e.g. the Determinate Systems installer).
 2. From this machine: `ssh-copy-id <host>` so SSH works without a password (the tool
-   runs SSH non-interactively), then `python -m accel.remote setup`.
+   runs SSH non-interactively), then `accel remote setup`.
 
 Parallel jobs (`accel.strategy`, Monte Carlo) use all the remote's cores
 (`--workers`).
@@ -320,9 +331,9 @@ progress, throughput, ETA); `save_timeline()` plots every task on every worker a
 CPU load.
 
 ```sh
-python -m accel.strategy --regen --out strategy --remote mathewos@desktop-17id03o-2
-python -m accel.cluster selftest --remote mathewos@desktop-17id03o-2   # try the dashboard
-python -m accel.bench single|parallel|cluster --out bench/              # benchmarks
+accel strategy --regen --out strategy --remote mathewos@desktop-17id03o-2
+accel cluster selftest --remote mathewos@desktop-17id03o-2   # try the dashboard
+accel bench single|parallel|cluster --out bench/              # benchmarks
 ```
 
 Benchmarks (Nov 2026): the laptop (Ryzen 5 7640U, 12 threads) runs single sims ~25%

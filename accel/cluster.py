@@ -6,7 +6,7 @@
     c.save_timeline("timeline.png")
 
 How: a coordinator here serves a task queue (multiprocessing.managers, stdlib) on
-127.0.0.1. Each machine runs a node (`python -m accel.cluster node`) with one worker
+127.0.0.1. Each machine runs a node (`accel cluster node`) with one worker
 per core; workers pull tasks as they free up, so faster machines take more. Remote
 nodes get this working tree pushed and started through accel.remote, and reach the
 queue through an SSH reverse tunnel (no ports opened anywhere). Tasks are
@@ -17,7 +17,6 @@ worker is running and for how long, and overall progress with throughput and ETA
 without a terminal it prints a line every few seconds. save_timeline() plots every
 task on every worker and each machine's CPU over the run.
 """
-import argparse
 import importlib
 import multiprocessing as mp
 import os
@@ -149,7 +148,7 @@ class Cluster:
             name = socket.gethostname()
             self.hosts[name] = self.local_workers
             self._procs.append(subprocess.Popen(
-                [sys.executable, "-m", "accel.cluster", "node", *args, "--name", name,
+                [sys.executable, "-m", "accel", "cluster", "node", *args, "--name", name,
                  "--workers", str(self.local_workers)], cwd=ROOT))
         if self.remotes:
             sha = remote.snapshot()
@@ -160,10 +159,10 @@ class Cluster:
                 name = host.split("@")[-1]
                 self.hosts[name] = cores
                 script = remote.job_script(self.remote_dir, sha, [
-                    "python", "-m", "accel.cluster", "node", *args, "--name", name,
+                    "python", "-m", "accel", "cluster", "node", *args, "--name", name,
                     "--workers", str(cores)], use_uv=False)
                 cmd = ["ssh", *remote.SSH_OPTS, "-o", "ExitOnForwardFailure=yes",
-                       "-R", f"{self.port}:127.0.0.1:{self.port}", host, script]
+                       "-R", f"{self.port}:127.0.0.1:{self.port}", remote.resolve(host), script]
                 self._procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL))
         return self
 
@@ -338,28 +337,10 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="action", required=True)
-    n = sub.add_parser("node", help="(started by Cluster) run workers against a coordinator")
-    n.add_argument("--address", required=True)
-    n.add_argument("--authkey", required=True)
-    n.add_argument("--name", required=True)
-    n.add_argument("--workers", type=int, required=True)
-    t = sub.add_parser("selftest", help="sleep tasks across this machine (and --remote ones)")
-    t.add_argument("--n", type=int, default=60)
-    t.add_argument("--remote", action="append", default=[])
-    t.add_argument("--workers", type=int, default=None)
-    args = ap.parse_args()
-    if args.action == "node":
-        node(args.address, bytes.fromhex(args.authkey), args.name, args.workers)
-    else:
-        import random
-        tasks = [random.uniform(0.5, 3.0) for _ in range(args.n)]
-        with Cluster(local_workers=args.workers, remotes=args.remote) as c:
-            c.map("accel.cluster:sleep_task", tasks, labels=[f"sleep {x:.1f} s" for x in tasks],
-                  title="cluster self-test")
-
-
-if __name__ == "__main__":
-    main()
+def selftest(n: int = 60, remotes: list[str] = (), workers: int | None = None):
+    """Random 0.5-3 s sleep tasks across this machine and remotes: try the dashboard."""
+    import random
+    tasks = [random.uniform(0.5, 3.0) for _ in range(n)]
+    with Cluster(local_workers=workers, remotes=list(remotes)) as c:
+        c.map("accel.cluster:sleep_task", tasks, labels=[f"sleep {x:.1f} s" for x in tasks],
+              title="cluster self-test")
