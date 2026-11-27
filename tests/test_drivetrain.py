@@ -36,3 +36,28 @@ def test_hub_cars_drive_within_80_kw(name):
     assert (d.bus_v * d.bus_i).max() <= 80.5e3                            # the rule
     front = d[["hub_torque_fl", "hub_torque_fr"]].to_numpy()
     assert front.max() > 5                                                # the front wheels drive
+
+
+def test_torque_vectoring_turns_the_car():
+    """In yaw mode, asking for more yaw puts more torque on the outside wheels."""
+    from kmslap.car.powertrain import MotorMap
+    from kmslap.vcu.torque_control import TorqueController, VehicleState
+    car = variant("4wd_dti")
+    ctl = TorqueController(car, MotorMap("228HV"), "yaw", yaw_kp=3000, yaw_ki=0)
+    om = (15 / car.tire_radius,) * 4
+    _, (fl, fr, rl, rr) = ctl(VehicleState(0.5, 0.0, 0.1, om, 15.0, 0.0, 0.0, 580.0))   # steered left, not yawing
+    assert fr > fl and rr > rl
+    _, (fl, fr, rl, rr) = TorqueController(car, MotorMap("228HV"), "load")(VehicleState(0.5, 0.0, 0.1, om, 15.0, 0.0, 0.0, 580.0))
+    assert fr == pytest.approx(fl) and rr == pytest.approx(rl)
+
+
+def test_mode_manager_switches_only_when_slow():
+    from kmslap.car.powertrain import MotorMap
+    from kmslap.vcu.torque_control import ModeManager, TorqueController, VehicleState
+    car, m = variant("4wd_dti"), MotorMap("228HV")
+    mm = ModeManager({k: TorqueController(car, m, k) for k in ("load", "yaw")}, "load")
+    mm.request("yaw")
+    mm(VehicleState(0.5, 0.0, 0.0, (20 / car.tire_radius,) * 4, 20.0, 0.0, 0.0, 580.0))
+    assert mm.active == "load"                                             # 20 m/s: not now
+    mm(VehicleState(0.0, 0.0, 0.0, (2 / car.tire_radius,) * 4, 2.0, 0.0, 0.0, 580.0))
+    assert mm.active == "yaw"

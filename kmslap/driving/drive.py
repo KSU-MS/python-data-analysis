@@ -35,7 +35,8 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
           vx0: float = 0.0, soc0: float = 1.0, pack_temp0: float | None = None,
           relaxation_length: float = 0.15, relaxation_length_lat: float = 0.3,
           drs=None, regen=None, X0: float = 0.0, Y0: float = 0.0, psi0: float = 0.0,
-          pack_backend=None, realtime: bool = False, on_tick=None) -> DriveResult:
+          pack_backend=None, realtime: bool = False, on_tick=None, torque_mode: str = "load",
+          torque_controller=None) -> DriveResult:
     """Run until the driver is done or t_max.
 
     The driver's pedal maps linearly to a torque request (0..motor peak), as the VCU's
@@ -57,6 +58,9 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     resistance, state of charge and temperature, which replace the model's own. None:
     the model's pack.
     realtime: run no faster than the wall clock (a real cell in the loop).
+    torque_mode / torque_controller: a car with hub motors (car/drivetrain.py) commands
+    every motor through vcu/torque_control.TorqueController in this mode ("fixed",
+    "load", "yaw"), or through the controller given (e.g. a ModeManager).
     on_tick(t, state, out, inputs): called at the driver rate (state / out by
     twotrack.STATES / OUTPUTS, inputs a dict of the driver's and the command); a true
     return stops the run.
@@ -97,10 +101,13 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     state, out = plant.state, [0.0] * len(O)
     hub_cmds = (0.0, 0.0, 0.0, 0.0)
     # hub motors: the torque split gives every motor its command, at the driver rate
-    split = None
-    if car.hub_front or car.hub_rear:
-        from kmslap.driving.torque_split import TorqueSplit
-        split = TorqueSplit(car, motor, regen, period=driver_period, tc=controller is None)
+    split = torque_controller
+    if split is None and (car.hub_front or car.hub_rear):
+        from kmslap.vcu.torque_control import TorqueController
+        split = TorqueController(car, motor, torque_mode, regen, period=driver_period,
+                                 slip_control=controller is None)
+    if split is not None:
+        from kmslap.vcu.torque_control import VehicleState
         central_cmd = 0.0
         iaxf, ibusv = S.index("ax_filt"), S.index("bus_v")
     pedal = brake = sw = 0.0
@@ -139,8 +146,9 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
             if drs is not None:
                 wing_target = drs(obs, pedal, brake, sw)
             if split is not None:
-                central_cmd, hub_cmds = split(pedal, brake, [state[i] for i in iw], state[ivx], state[iaxf],
-                                              state[ibusv], state[ir])
+                central_cmd, hub_cmds = split(VehicleState(
+                    pedal, brake, sw / car.steer_ratio, tuple(state[i] for i in iw), state[ivx], state[ir],
+                    state[iaxf], state[ibusv]))
         if regen is not None:
             # pedal map with regen at its bottom; the drive part goes through TC, the
             # regen part (and brake blending) straight to the inverter
