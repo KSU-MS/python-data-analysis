@@ -4,10 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from accel import Car
-from accel.drive import drive
-from accel.driver import RegenPolicy, ScriptedDriver
-from accel.powertrain import PACKS, Pack, motor_efficiency_map
+from kmslap import Car
+from kmslap.driving.drive import drive
+from kmslap.driving.policies import RegenPolicy
+from kmslap.driving.follower import ScriptedDriver
+from kmslap.car.powertrain import PACKS, Pack, motor_efficiency_map
 
 # drive 3 s, then off the throttle
 DRIVE_THEN_LIFT = lambda: ScriptedDriver(pedal=lambda t: 0.6 if t < 3.0 else 0.0)

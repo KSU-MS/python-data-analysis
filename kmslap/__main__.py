@@ -1,4 +1,4 @@
-"""`python -m accel ...` is the `accel` command (accel/cli.py)."""
-from .cli import main
+"""`python -m kmslap ...` is the `kmslap` command (kmslap/cli.py)."""
+from kmslap.cli import main
 
 main()

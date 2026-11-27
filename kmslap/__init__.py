@@ -1,12 +1,16 @@
-"""FSAE EV sims. `from accel import Car, simulate, ...` works as usual; the submodules
-load on first use (PEP 562), so `import accel` (and the CLI's tab completion) stays
-fast."""
+"""kmslap: Kennesaw Motorsports lap sim. The car (car/), its models (models/), events
+(events/), drivers (driving/), the VCU controller bridge (vcu/), strategy tuning,
+validation, reporting and the tooling to run it all (ops/, cli).
+
+`from kmslap import Car, simulate, ...` exports load on first use (PEP 562), so
+`import kmslap` (and the CLI's tab completion) stays fast."""
 import importlib
 
 _EXPORTS = {
-    "SlipTC": "control", "Car": "params", "MotorMap": "powertrain", "Pack": "powertrain",
-    "PACKS": "powertrain", "Result": "sim", "quasi_static": "sim", "simulate": "sim",
-    "CurveTire": "tire", "PacejkaTire": "tire", "default_tire": "tire",
+    "SlipTC": "vcu.control", "Car": "car.params", "MotorMap": "car.powertrain",
+    "Pack": "car.powertrain", "PACKS": "car.powertrain", "Result": "events.accel",
+    "quasi_static": "events.accel", "simulate": "events.accel", "CurveTire": "car.tire",
+    "PacejkaTire": "car.tire", "default_tire": "car.tire",
 }
 __all__ = sorted(_EXPORTS)
 

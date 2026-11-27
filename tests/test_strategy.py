@@ -3,8 +3,8 @@ import math
 
 import pytest
 
-from accel.powertrain import PACKS, Pack
-from accel.strategy import _soc_after, evaluate
+from kmslap.car.powertrain import PACKS, Pack
+from kmslap.strategy import _soc_after, evaluate
 
 
 def test_soc_after_energy():

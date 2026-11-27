@@ -9,9 +9,9 @@ import dataclasses
 import numpy as np
 import pandas as pd
 
-from .params import Car
-from .sim import quasi_static, simulate
-from .tire import PacejkaTire
+from kmslap.car.params import Car
+from kmslap.events.accel import quasi_static, simulate
+from kmslap.car.tire import PacejkaTire
 
 # (low, high) multipliers on the nominal value, or absolute ranges where noted
 RANGES = {

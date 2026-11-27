@@ -5,14 +5,15 @@ import math
 import numpy as np
 import pytest
 
-from accel import Car, simulate
-from accel import vehicle
-from accel.drive import drive
-from accel.driver import Path, PathFollower, ScriptedDriver, SKIDPAD_RADIUS
-from accel.firmware import FirmwareController
-from accel.powertrain import PACKS, MotorMap, Pack
-from accel.sim import LENGTH, STAGE
-from accel.tire import default_tire
+from kmslap import Car, simulate
+from kmslap.models import twotrack as vehicle
+from kmslap.driving.drive import drive
+from kmslap.driving.paths import Path, SKIDPAD_RADIUS
+from kmslap.driving.follower import PathFollower, ScriptedDriver
+from kmslap.vcu.firmware import FirmwareController
+from kmslap.car.powertrain import PACKS, MotorMap, Pack
+from kmslap.events.accel import LENGTH, STAGE
+from kmslap.car.tire import default_tire
 
 
 @pytest.fixture(scope="module")

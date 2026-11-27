@@ -1,9 +1,9 @@
 import numpy as np
-from tire.tire_utils import H_R20_18X6_7
-from tire_model_pacejka_2010 import tire_model_from_arr
+from kmslap.car.pacejka.tire_utils import H_R20_18X6_7
+from kmslap.car.pacejka.tire_model_pacejka_2010 import tire_model_from_arr
 import plotly.graph_objs as go
 import time
-from constants import *
+from kmslap.car.pacejka.constants import *
 from scipy.optimize import minimize
 # from Functions.py_functions.maths import vel_at_tire, clip, to_vel_frame, to_car_frame
 

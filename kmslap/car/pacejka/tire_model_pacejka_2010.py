@@ -1,6 +1,6 @@
 import numpy as np
-from tire.tire_utils import MODEL_DEFAULTS, VarInf, PostProInputs, Mode, FAndmoments, set_x, Result, RetValue, InputRanges, dump_tk
-from tire.tire_fitting_masks import LABELS, NAMES
+from kmslap.car.pacejka.tire_utils import MODEL_DEFAULTS, VarInf, PostProInputs, Mode, FAndmoments, set_x, Result, RetValue, InputRanges, dump_tk
+from kmslap.car.pacejka.tire_fitting_masks import LABELS, NAMES
 from typing import List
 # from loading_util import make_path
 from numpy import matlib as ml

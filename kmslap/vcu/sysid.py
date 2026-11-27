@@ -1,4 +1,4 @@
-"""Fit the plant's uncertain coefficients to a VCU log (accel.firmware.read_log).
+"""Fit the plant's uncertain coefficients to a VCU log (kmslap.vcu.firmware.read_log).
 
 Equation-error identification: each physics equation is fit directly against the
 measured signals, rather than re-simulating the whole run from logged torque. (A
@@ -12,7 +12,7 @@ wheelspin from tiny torque sampling errors, even with the true coefficients.)
   3. grip, sigma   tire force from (2) vs the relaxation-length slip computed from
                    measured wheel and ground speed
 
-The stds give narrowed ranges for accel.uncertainty, so each test day tightens
+The stds give narrowed ranges for kmslap.vcu.uncertainty, so each test day tightens
 the Monte Carlo.
 
     inputs, _ = read_log("run.vcu")
@@ -25,13 +25,13 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares
 
-from .params import Car
-from .powertrain import MotorMap
-from .tire import PacejkaTire
+from kmslap.car.params import Car
+from kmslap.car.powertrain import MotorMap
+from kmslap.car.tire import PacejkaTire
 
 RPM_TO_RADS = 2 * np.pi / 60
 
-# Fit error measured on 30 random plants (accel.uncertainty.sample_plants, every
+# Fit error measured on 30 random plants (kmslap.vcu.uncertainty.sample_plants, every
 # coefficient off) with the VCU slip_pi controller. The regression stds alone are
 # 10-70x too small: they can't see errors from coefficients held at nominal (drag,
 # rolling, driveline efficiency, which is indistinguishable from mass here). Rear

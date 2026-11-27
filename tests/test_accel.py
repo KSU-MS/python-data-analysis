@@ -2,8 +2,8 @@ import math
 
 import pytest
 
-from accel import Car, CurveTire, MotorMap, Pack, PACKS, PacejkaTire, SlipTC, quasi_static, simulate
-from accel.params import G
+from kmslap import Car, CurveTire, MotorMap, Pack, PACKS, PacejkaTire, SlipTC, quasi_static, simulate
+from kmslap.car.params import G
 
 
 @pytest.fixture(scope="module")
@@ -87,7 +87,7 @@ def test_accel_time_is_plausible(motor):
 
 
 def test_reference_data_loads():
-    from accel.compare import load_ks5e_runs, load_optimumlap, time_to
+    from kmslap.validation.compare import load_ks5e_runs, load_optimumlap, time_to
 
     olap = load_optimumlap()
     assert olap["x"].max() == pytest.approx(75.0)
@@ -102,7 +102,7 @@ def test_reference_data_loads():
 
 def test_ks5e_sim_matches_clean_real_run():
     """The run that hooked up cleanly (no wheelspin) is within 2% of the TC sim."""
-    from accel.compare import KS5E_SETUP, load_ks5e_runs, time_to
+    from kmslap.validation.compare import KS5E_SETUP, load_ks5e_runs, time_to
 
     clean = next(r for r in load_ks5e_runs() if r.attrs["label"].endswith("@ 260.5s"))
     sim = simulate(**KS5E_SETUP, tc=SlipTC())
@@ -110,7 +110,7 @@ def test_ks5e_sim_matches_clean_real_run():
 
 
 def test_launch_strategies(motor):
-    from accel.launch import grip_launch_map
+    from kmslap.events.launch import grip_launch_map
 
     car = Car()
     ideal = quasi_static(car, motor).accel_time
@@ -128,7 +128,7 @@ def test_tc_robust_to_grip(motor, grip):
 
 
 def test_rerun_recording(tmp_path, motor):
-    from accel.viz import show_runs
+    from kmslap.reporting.viz import show_runs
 
     runs = {"no TC": simulate(Car(), motor), "TC": simulate(Car(), motor, tc=SlipTC())}
     path = show_runs(runs, Car(), save=str(tmp_path / "runs.rrd"))

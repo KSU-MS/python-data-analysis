@@ -1,8 +1,8 @@
-"""accel.remote's pieces that don't need a remote: snapshot and the job script."""
+"""kmslap.ops.remote's pieces that don't need a remote: snapshot and the job script."""
 import shlex
 import subprocess
 
-from accel import remote
+from kmslap.ops import remote
 
 
 def test_snapshot_is_a_commit_of_the_tree():

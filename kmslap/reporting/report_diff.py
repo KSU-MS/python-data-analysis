@@ -1,4 +1,4 @@
-"""Compare two accel.report metrics.json files as a markdown table.
+"""Compare two kmslap.reporting.report metrics.json files as a markdown table.
 
     accel report-diff base/metrics.json head/metrics.json [--artifact-url URL]
 

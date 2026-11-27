@@ -1,10 +1,10 @@
-"""The `accel` command: every tool in this package as a subcommand, with tab completion.
+"""The `kmslap` command: every tool in this package as a subcommand, with tab completion.
 
-    accel --install-completion     # once, for your shell (zsh / bash / fish)
-    accel --help                   # or `accel <command> --help`
+    kmslap --install-completion     # once, for your shell (zsh / bash / fish)
+    kmslap --help                   # or `kmslap <command> --help`
 
 Installed by `uv sync` (non-Nix) or present in the Nix dev shell (editable install).
-`python -m accel ...` is the same command.
+`python -m kmslap ...` is the same command.
 
 Commands import what they need only when they run, so completion stays fast.
 """
@@ -16,13 +16,13 @@ from typing import Annotated, Optional
 
 import typer
 
-from . import remote as _remote_defaults   # light: stdlib only
+from kmslap.ops import remote as _remote_defaults  # light: stdlib only
 
 app = typer.Typer(no_args_is_help=True, rich_markup_mode="rich", add_completion=True,
                   help="FSAE sims: accel, the VCU controller, endurance, strategy tuning, and "
                        "running them on other machines.")
-remote_app = typer.Typer(no_args_is_help=True, help="Run jobs on another machine (accel.remote).")
-cluster_app = typer.Typer(no_args_is_help=True, help="Spread jobs over machines (accel.cluster).")
+remote_app = typer.Typer(no_args_is_help=True, help="Run jobs on another machine (ops.remote).")
+cluster_app = typer.Typer(no_args_is_help=True, help="Spread jobs over machines (ops.cluster).")
 app.add_typer(remote_app, name="remote")
 app.add_typer(cluster_app, name="cluster")
 
@@ -86,14 +86,14 @@ Dir = Annotated[str, typer.Option("--dir", help="the remote clone, relative to i
 # --- sims ---------------------------------------------------------------------------
 
 @app.command()
-def sim(fd: Annotated[Optional[list[float]], typer.Argument(help="final drive(s)", show_default="3.0")] = None,
+def accel(fd: Annotated[Optional[list[float]], typer.Argument(help="final drive(s)", show_default="3.0")] = None,
         motor: Motor = Motor.m228HV, pack: PackName = PackName.cosmx600v, tire: Tire = Tire.lc0,
         mu: Annotated[float, typer.Option(help="peak mu for --tire curve")] = 1.4,
         mass: Annotated[Optional[float], typer.Option(help="kg (default: Car's)")] = None,
         plot: Annotated[Optional[str], typer.Option(help="save time traces (PNG)")] = None):
     """Accel event: ideal TC vs no TC vs TC, for each final drive."""
-    from .params import Car
-    from .quick import run
+    from kmslap.car.params import Car
+    from kmslap.events.accel_compare import run
     run(fd or [Car.final_drive], motor.value, pack.value, tire.value, mu,
         mass if mass is not None else Car.mass, plot)
 
@@ -101,14 +101,14 @@ def sim(fd: Annotated[Optional[list[float]], typer.Argument(help="final drive(s)
 @app.command()
 def report(out: str = "report", plants: Annotated[int, typer.Option(help="Monte Carlo plants")] = 20):
     """Headline accel sims: drag race GIF, plots, summary.md, metrics.json (what CI runs)."""
-    from .report import run
+    from kmslap.reporting.report import run
     run(out, plants)
 
 
 @app.command("report-diff")
 def report_diff(base: str, head: str, artifact_url: Optional[str] = None):
     """Compare two metrics.json files as markdown (the PR comment)."""
-    from .report_diff import run
+    from kmslap.reporting.report_diff import run
     run(base, head, artifact_url)
 
 
@@ -116,14 +116,14 @@ def report_diff(base: str, head: str, artifact_url: Optional[str] = None):
 def viz(save: Annotated[Optional[str], typer.Option(help="write this .rrd instead of opening the viewer")] = None,
         fd: float = 3.0):
     """3D drag race of no TC vs the VCU controllers in Rerun."""
-    from .viz import run
+    from kmslap.reporting.viz import run
     run(save, fd)
 
 
 @app.command()
 def drive(out: str = "drive.png"):
     """Double-track demo: skidpad and a short course, plotted."""
-    from .drive import demo
+    from kmslap.driving.drive import demo
     demo(out)
 
 
@@ -131,7 +131,7 @@ def drive(out: str = "drive.png"):
 def endurance(laps: int = 18, margin: Annotated[float, typer.Option(help="fraction of the grip envelope")] = 0.8,
               out: str = "endurance.png"):
     """Endurance event: wing closed / open / DRS / lift-and-coast compared."""
-    from .endurance import compare
+    from kmslap.events.endurance import compare
     compare(laps, margin, out)
 
 
@@ -141,7 +141,7 @@ def strategy(out: str = "strategy", workers: Workers = None,
              remote: Remote = [],
              soc_floor: Annotated[float, typer.Option(help="SOC reserve the event must end above")] = 0.10):
     """Tune pace, lift-and-coast, DRS (and regen) for the fastest finishing event."""
-    from .strategy import run
+    from kmslap.strategy import run
     run(out, workers, regen, remote, soc_floor)
 
 
@@ -149,7 +149,7 @@ def strategy(out: str = "strategy", workers: Workers = None,
 def bench(what: Bench, n: Annotated[int, typer.Option(help="strategy evaluations")] = 96,
           workers: Workers = None, remote: Remote = [], out: str = "bench"):
     """Benchmarks: single-thread timings, parallel throughput, or the cluster."""
-    from .bench import record
+    from kmslap.ops.bench import record
     record(what.value, n, workers, remote, out)
 
 
@@ -167,7 +167,7 @@ def remote_run(ctx: typer.Context,
                detach: Annotated[bool, typer.Option(help="start it and return; see `log` / `fetch`")] = False,
                uv: Annotated[bool, typer.Option(help="`uv run` instead of nix develop")] = False,
                host: Host = _remote_defaults.DEFAULT_HOST, dir: Dir = _remote_defaults.DEFAULT_DIR):
-    """Run a command there on this working tree: accel remote run [opts] -- accel strategy ..."""
+    """Run a command there on this working tree: kmslap remote run [opts] -- kmslap strategy ..."""
     _remote_defaults.run(host, dir, list(ctx.args), fetch, detach, uv)
 
 
@@ -189,20 +189,20 @@ def remote_log(host: Host = _remote_defaults.DEFAULT_HOST, dir: Dir = _remote_de
 @cluster_app.command("selftest")
 def cluster_selftest(n: int = 60, remote: Remote = [], workers: Workers = None):
     """Sleep tasks across this machine and remotes, to try the live dashboard."""
-    from .cluster import selftest
+    from kmslap.ops.cluster import selftest
     selftest(n, remote, workers)
 
 
 @cluster_app.command("node", hidden=True)
 def cluster_node(address: Annotated[str, typer.Option()], authkey: Annotated[str, typer.Option()],
                  name: Annotated[str, typer.Option()], workers: Annotated[int, typer.Option()]):
-    """(started by accel.cluster) run workers against a coordinator."""
-    from .cluster import node
+    """(started by kmslap.ops.cluster) run workers against a coordinator."""
+    from kmslap.ops.cluster import node
     node(address, bytes.fromhex(authkey), name, workers)
 
 
 def main():
-    app(prog_name="accel")
+    app(prog_name="kmslap")
 
 
 if __name__ == "__main__":

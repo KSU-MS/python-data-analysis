@@ -1,16 +1,30 @@
-# python-data-analysis
+# kmslap
 
-Performance analysis and simulation for the KSU FSAE electric cars. The main piece is
-an **acceleration event sim** (`accel/`) with wheelspin dynamics, a C++ launch /
-traction controller (`controller/`) that's meant to run unchanged on the VCU, and
-tooling to close the loop with car logs. The repo root also has older notebooks and
-scripts for log analysis, motor curves and battery sims.
+**kmslap** (Kennesaw Motorsports lap sim): performance simulation for the KSU FSAE
+electric cars. A CasADi vehicle model of the car (1D for accel, four-wheel for
+everything else) with its motor, pack (charge, heat) and tires; the events (accel,
+skidpad, endurance on the real Michigan line); simulated drivers, DRS and regen; a C++
+launch / traction controller (`controller/`) meant to run unchanged on the VCU, in the
+loop; strategy tuning; and tooling to run it all on more than one machine. The older
+log analysis notebooks and scripts are in `legacy/`.
+
+| Package | What |
+|---|---|
+| `kmslap/car/` | `Car` parameters, tires (`PacejkaTire`, combined slip), motor map and pack (`powertrain.py`), and the original motor dq / battery / Pacejka fit models they're built on |
+| `kmslap/models/` | CasADi models: `accel1d.py` (accel event plant), `twotrack.py` (four-wheel car), `envelope.py` (grip envelope by optimization) |
+| `kmslap/events/` | `accel.py` (`simulate`, `quasi_static`), `launch.py` (launch strategies), `endurance.py`, `track.py` (real track lines) |
+| `kmslap/driving/` | `paths.py` (lines, skidpad), `follower.py` (drivers), `policies.py` (DRS, regen), `drive.py` (the loop) |
+| `kmslap/vcu/` | the C++ controller in the loop (`firmware.py`), Python TC, system ID, Monte Carlo over uncertain coefficients |
+| `kmslap/strategy.py` | endurance strategy tuning (pace, coasting, DRS, regen) |
+| `kmslap/validation/`, `reporting/` | KS5e / OptimumLap comparisons; the CI report, PR diff, Rerun 3D view |
+| `kmslap/ops/` | remote runner, cluster across machines, benchmarks |
+| `kmslap/cli.py` | the `kmslap` command |
 
 - [Setup](#setup)
   - [NixOS (or any machine with Nix)](#nixos-or-any-machine-with-nix)
   - [Without Nix (Linux, macOS, Windows/WSL)](#without-nix-linux-macos-windowswsl)
 - [Quick start](#quick-start)
-- [Accel sim](#accel-sim)
+- [Accel event](#accel-event)
 - [Driving the car (double-track model)](#driving-the-car-double-track-model)
 - [Endurance and DRS](#endurance-and-drs)
 - [VCU controller (sim + car)](#vcu-controller-sim--car)
@@ -99,29 +113,29 @@ megabytes of plots.
 
 ## Quick start
 
-Everything runs through one command, `accel`, with tab completion for commands, options,
+Everything runs through one command, `kmslap`, with tab completion for commands, options,
 choices (motors, packs) and Tailscale hosts. It's on PATH in the Nix dev shell (an
 editable install of this repo, so code edits apply immediately). Without Nix, `uv sync`
-installs it into `.venv/bin`: activate the venv to use it as `accel` (with completion),
+installs it into `.venv/bin`: activate the venv to use it as `kmslap` (with completion),
 or prefix with `uv run`. Turn completion on once:
 
 ```sh
-accel --install-completion      # zsh / bash / fish; restart the shell
-accel --help                    # commands: sim report report-diff viz drive endurance
+kmslap --install-completion     # zsh / bash / fish; restart the shell
+kmslap --help                   # commands: accel report report-diff viz drive endurance
                                 # strategy bench remote cluster
 ```
 
-`python -m accel ...` is the same command.
+`python -m kmslap ...` is the same command.
 
 ```sh
 # accel times for a few final drives: ideal TC vs no TC vs TC
-accel sim 2.4 3.0 4.0
+kmslap accel 2.4 3.0 4.0
 
 # same, saving speed / accel / torque / slip traces
-accel sim 3.0 --plot run.png
+kmslap accel 3.0 --plot run.png
 
 # 3D drag race replay of no TC vs the VCU controllers (opens the Rerun viewer)
-accel viz
+kmslap viz
 
 # the main notebook: traces, KS5e / OptimumLap validation, launch strategies,
 # the C++ controller in the loop, Monte Carlo, the log -> fit -> retune loop
@@ -134,8 +148,8 @@ pytest -q
 From Python:
 
 ```python
-from accel import Car, MotorMap, SlipTC, simulate, quasi_static
-from accel.firmware import FirmwareController
+from kmslap import Car, MotorMap, SlipTC, simulate, quasi_static
+from kmslap.vcu.firmware import FirmwareController
 
 car = Car(final_drive=3.0)                 # defaults: 228HV, COSMX 144s1p, LC0 tire
 ideal = quasi_static(car)                  # perfect-traction bound
@@ -145,32 +159,32 @@ run.df                                     # every sim step: speed, slip, torque
 run.controller_log                         # what the controller saw and commanded
 ```
 
-## Accel sim
+## Accel event
 
-The `accel/` package is the acceleration event sim; `accel_sim.ipynb` is the plotting
-front-end (`accel_weight_transfer.ipynb` is the old version, kept for reference).
+`kmslap/events/accel.py` is the acceleration event sim; `accel_sim.ipynb` is the plotting
+front-end (`legacy/accel_weight_transfer.ipynb` is the old version, kept for reference).
 Defaults are the current car: EMRAX 228HV, COSMX 144s1p pack, final drive 3.0, TTC
 LC0 Pacejka tire.
 
-- `params.py`: car parameters (mass, CG, aero, inertias, ...). Values marked ESTIMATE need measuring.
-- `powertrain.py`: tabulated EMRAX torque(rpm, bus V) from `motor.py`, accumulator as Voc + R.
-- `tire.py`: `PacejkaTire` (TTC fits in `tire/`, default LC0) or `CurveTire` (tire/mu-vs-slip.csv shape, scaled).
-- `control.py`: slip-target PI traction control (Python, ideal sensors).
-- `launch.py`: launch torque strategies (driver ramp, grip-limited launch map, numerical optimizer).
-- `model.py`: the plant (chassis, rear wheel spin, tire relaxation, load transfer lag, inverter
+- `car/params.py`: car parameters (mass, CG, aero, inertias, ...). Values marked ESTIMATE need measuring.
+- `car/powertrain.py`: tabulated EMRAX torque(rpm, bus V) from `car/motor.py`, accumulator as Voc + R.
+- `car/tire.py`: `PacejkaTire` (TTC fits in `car/pacejka/`, default LC0) or `CurveTire` (`car/pacejka/mu-vs-slip.csv` shape, scaled).
+- `vcu/control.py`: slip-target PI traction control (Python, ideal sensors).
+- `events/launch.py`: launch torque strategies (driver ramp, grip-limited launch map, numerical optimizer).
+- `models/accel1d.py`: the plant (chassis, rear wheel spin, tire relaxation, load transfer lag, inverter
   lag, motor map, pack) as one [CasADi](https://web.casadi.org) model. `simulate` runs it as
   generated C (compiled on first use into `build/casadi/`, ~1 s); `rollout()` unrolls it for
   exact derivatives, e.g. `accel_time_sensitivity()` gives d(accel time)/d(every coefficient)
   in one pass. Grip and every `Car` field are parameters, so one compiled model serves all
   Monte Carlo plants.
-- `sim.py`: `simulate` (the loop around the model: driver request, TC or the VCU controller,
+- `events/accel.py`: `simulate` (the loop around the model: driver request, TC or the VCU controller,
   logging) and `quasi_static` (ideal-TC bound, the joe-accel model).
-- `compare.py`: reference data (OptimumLap run, KS5e launch logs) and matching sim setups;
+- `validation/compare.py`: reference data (OptimumLap run, KS5e launch logs) and matching sim setups;
   the validation plots are in `accel_sim.ipynb`.
 
 ## Driving the car (double-track model)
 
-`accel/vehicle.py` is the whole car in four wheels, written in CasADi and compiled the
+`kmslap/models/twotrack.py` is the whole car in four wheels, written in CasADi and compiled the
 same way as the accel model: chassis (x, y, yaw), four wheel spins with the rears through
 a Drexler-style limited-slip diff (preload + locking torque proportional to input
 torque), combined-slip Pacejka tires with relaxation lengths, longitudinal and lateral
@@ -178,41 +192,42 @@ load transfer (lagged), aero, brakes, the motor map, and the pack with its state
 charge and temperature (I²R heating, passive cooling to ambient). New `Car` and `Pack`
 fields for it are marked ESTIMATE.
 
-`accel/drive.py` runs it from a driver's pedal, brake and steering wheel, optionally through
+`kmslap/driving/drive.py` runs it from a driver's pedal, brake and steering wheel, optionally through
 the VCU controller (fed per-wheel sensor edges):
 
 ```python
-from accel.drive import drive
-from accel.driver import PathFollower, skidpad
+from kmslap.driving.drive import drive
+from kmslap.driving.follower import PathFollower
+from kmslap.driving.paths import skidpad
 res = drive(PathFollower(skidpad(), speed=10.0))
 res.df[["t", "X", "Y", "speed", "ay", "beta", "soc", "pack_temp"]]
 ```
 
-`accel/driver.py` has `ScriptedDriver` (inputs as functions of time) and `PathFollower` (pure
-pursuit steering, acceleration-limited speed control, lifts when the car slides), paths
-(`skidpad()`, `Path.from_segments`) and a speed profile from acceleration limits.
-Target speeds come from the car itself: `accel/envelope.py` solves its grip envelope
+`kmslap/driving/follower.py` has `ScriptedDriver` (inputs as functions of time) and `PathFollower` (pure
+path tracking steering, acceleration-limited speed control, lifts when the rear slides);
+`paths.py` the lines (`skidpad()`, `Path.from_segments`) and a speed profile from acceleration limits.
+Target speeds come from the car itself: `kmslap/models/envelope.py` solves its grip envelope
 (g-g-v diagram) with Ipopt on the same tire, load transfer, aero, diff and motor model:
 at each speed and direction in the g-g plane, the steady state that maximizes
 acceleration, required to be stable (no drifts the driver would have to catch).
 `envelope.speed_profile(path, env)` turns it into a speed target along a path (90% of the
 envelope by default: what the driver holds in steady cornering in the time-domain model).
 The envelope takes ~2 minutes and is cached in `build/envelope/`.
-`accel drive --out drive.png` plots a skidpad and a short course. With straight
+`kmslap drive --out drive.png` plots a skidpad and a short course. With straight
 steering it reproduces the accel model's times; the tests check steady cornering, left/right
 symmetry, pack charge and heat bookkeeping and the diff.
 
 ## Endurance and DRS
 
-`accel/endurance.py` runs the FSAE endurance event on the double-track car: the official
-Michigan 2026 EV line (`tracks/`, from the fsae-ev-endurance-map repo; `accel/track.py`
+`kmslap/events/endurance.py` runs the FSAE endurance event on the double-track car: the official
+Michigan 2026 EV line (`tracks/`, from the fsae-ev-endurance-map repo; `kmslap/events/track.py`
 loads and smooths it, ~1.22 km), 18 laps in two stints with the 3 minute driver change
 (the pack cools toward ambient meanwhile), driven at a fraction of the grip envelope.
 The pack discharges and heats (I²R, passive cooling only) and its BMS undervoltage limit
 cuts power as it empties, so a car that uses too much energy slows and stops short.
 
 ```sh
-accel endurance --out endurance.png
+kmslap endurance --out endurance.png
 # wing closed, wing set open by hand, DRS, wing closed + lift-and-coast
 ```
 
@@ -239,7 +254,7 @@ top of the friction brakes (from the front/rear pressure sensors), capped by
 The C++ controller only handles drive torque so far: regen commands go straight to the
 inverter.
 
-**Strategy tuning:** `accel strategy --out strategy/ [--regen]` searches pace
+**Strategy tuning:** `kmslap strategy --out strategy/ [--regen]` searches pace
 (fraction of the grip envelope), lift-and-coast, DRS policy parameters and (with
 `--regen`) regen strategies for the fastest event that still finishes with a 10% SOC
 reserve. Candidates are scored on 2 laps projected to the event (energy from the cells
@@ -250,17 +265,17 @@ parallel, and the winners confirmed with full 18-lap events.
 
 `controller/` is the launch/traction controller as firmware-style C++ (no heap, no Arduino, time passed
 in, C ABI in `vcu_control.h`). The sim builds it with `make -C controller` (automatically, on first use)
-and runs it through `accel/firmware.py`, feeding it modeled sensors: 19-tooth wheel speed edges, motor
+and runs it through `kmslap/vcu/firmware.py`, feeding it modeled sensors: 19-tooth wheel speed edges, motor
 rpm, torque feedback and VectorNav frames at CAN rates with latency and noise. The same sources are
 meant to compile into the VCU.
 
-- `accel/firmware.py`: `FirmwareController` (pass as `simulate(controller=...)`), input recording and
+- `kmslap/vcu/firmware.py`: `FirmwareController` (pass as `simulate(controller=...)`), input recording and
   `replay()` for running the controller on logged inputs.
-- `accel/uncertainty.py`: Monte Carlo where the simulated car's coefficients are drawn from ranges while
+- `kmslap/vcu/uncertainty.py`: Monte Carlo where the simulated car's coefficients are drawn from ranges while
   controllers keep their nominal beliefs.
 - Calibration: the controller learns tire radii (front sensors vs VectorNav, rear motor vs ground speed
   while coasting), VectorNav accel bias (while staged) and grip; persist `vcu_learned_t` across runs.
-  `accel.firmware.warmup()` simulates the calibration drive.
+  `kmslap.vcu.firmware.warmup()` simulates the calibration drive.
 - Plausibility: the controller measures the gear ratio as motor revs over rear wheel revs
   (counted on the rear sensors' teeth, so slip and tire radius don't matter). If it disagrees
   with the configured `final_drive` by more than 8% twice in a row, it latches
@@ -268,27 +283,27 @@ meant to compile into the VCU.
   ratio, slip reads wrong and TC can hold the car on the line. A wrong ratio is caught
   within ~6 m of rolling, so the warmup drive to the line should catch it before a launch.
 - Logging: `vcu_log_record_t` (packed binary, `vcu_control.h`) is what the car writes; `write_log` /
-  `read_log` / `replay` in `accel/firmware.py`.
-- `accel/sysid.py`: fits grip, mass, tire radius, rear inertia and tire relaxation from a log and narrows
+  `read_log` / `replay` in `kmslap/vcu/firmware.py`.
+- `kmslap/vcu/sysid.py`: fits grip, mass, tire radius, rear inertia and tire relaxation from a log and narrows
   `uncertainty.RANGES`.
 - `make -C controller teensy` (in `nix develop .#firmware`) cross-compiles the controller for the
   Teensy 4.1. CI (`.github/workflows/ci.yml`) runs the tests, the notebook and that cross-compile.
 
 ## Visualization
 
-`accel viz` replays no TC vs the VCU controllers as a 3D drag race in [Rerun](https://rerun.io)
+`kmslap viz` replays no TC vs the VCU controllers as a 3D drag race in [Rerun](https://rerun.io)
 (one lane per run, body pitch from load transfer, spoked wheels so rear wheelspin is visible, arrows for rear
 tire force and load) with speed / accel / slip / torque / TC / learned mu plots on the same timeline.
 `--save runs.rrd` writes the recording instead; open it later with `rerun runs.rrd`. From code,
-`accel.viz.show_runs({"name": result, ...}, car)`.
+`kmslap.reporting.viz.show_runs({"name": result, ...}, car)`.
 
-`accel report --out report/` runs the headline sims and writes a drag race GIF
+`kmslap report --out report/` runs the headline sims and writes a drag race GIF
 (rear wheels colored by slip), launch / final drive / robustness / controller-vs-truth /
 system ID / gear ratio check / sensitivity ("what to measure next": seconds of accel time
 each uncertain coefficient is worth) plots, a `summary.md` and a `metrics.json`. CI runs it on
 every push: the tables and charts are on the run's summary page, and the GIF and plots are
 in the `accel-report` artifact. On pull requests CI also runs the base branch's report and
-posts `accel report-diff base/metrics.json report/metrics.json` as a PR comment
+posts `kmslap report-diff base/metrics.json report/metrics.json` as a PR comment
 (accel times, robustness, system ID error, ... better / worse than base), updated on each push.
 
 The Rerun viewer sends anonymous usage stats by default (features used, not your data);
@@ -296,14 +311,14 @@ The Rerun viewer sends anonymous usage stats by default (features used, not your
 
 ## Running jobs on another machine
 
-`accel/remote.py` runs a command on another machine (default the desktop's WSL,
+`kmslap/ops/remote.py` runs a command on another machine (default the desktop's WSL,
 `desktop-17id03o-2` on Tailscale) on exactly your working tree, and copies results back:
 
 ```sh
-accel remote setup        # once: checks git + nix, clones, builds the env
-accel remote run --fetch strategy -- accel strategy --regen --out strategy
-accel remote run --detach --fetch strategy -- accel strategy --out strategy
-accel remote log          # follow a detached job; then: fetch strategy
+kmslap remote setup       # once: checks git + nix, clones, builds the env
+kmslap remote run --fetch strategy -- kmslap strategy --regen --out strategy
+kmslap remote run --detach --fetch strategy -- kmslap strategy --out strategy
+kmslap remote log         # follow a detached job; then: fetch strategy
 ```
 
 It snapshots tracked files including uncommitted edits (`git stash create`, your branch
@@ -317,12 +332,12 @@ The remote, once (Windows: WSL2 Ubuntu):
    (`sudo apt install openssh-server && sudo service ssh start`), git, and Nix with
    flakes (e.g. the Determinate Systems installer).
 2. From this machine: `ssh-copy-id <host>` so SSH works without a password (the tool
-   runs SSH non-interactively), then `accel remote setup`.
+   runs SSH non-interactively), then `kmslap remote setup`.
 
-Parallel jobs (`accel.strategy`, Monte Carlo) use all the remote's cores
+Parallel jobs (`kmslap strategy`, Monte Carlo) use all the remote's cores
 (`--workers`).
 
-**Both machines at once:** `accel/cluster.py` spreads independent tasks over this
+**Both machines at once:** `kmslap/ops/cluster.py` spreads independent tasks over this
 machine and remotes: a task queue here (stdlib `multiprocessing.managers`), one worker
 per core on each machine pulling from it (faster machines take more), remotes reached
 through an SSH reverse tunnel with the working tree pushed as above. In a terminal it
@@ -331,9 +346,9 @@ progress, throughput, ETA); `save_timeline()` plots every task on every worker a
 CPU load.
 
 ```sh
-accel strategy --regen --out strategy --remote mathewos@desktop-17id03o-2
-accel cluster selftest --remote mathewos@desktop-17id03o-2   # try the dashboard
-accel bench single|parallel|cluster --out bench/              # benchmarks
+kmslap strategy --regen --out strategy --remote mathewos@desktop-17id03o-2
+kmslap cluster selftest --remote mathewos@desktop-17id03o-2   # try the dashboard
+kmslap bench single|parallel|cluster --out bench/             # benchmarks
 ```
 
 Benchmarks (Nov 2026): the laptop (Ryzen 5 7640U, 12 threads) runs single sims ~25%
@@ -344,8 +359,8 @@ faster than the desktop's WSL (Ryzen 7 5800XT, 16 threads); in parallel they're 
 ## Car data to collect
 
 TODO: everything the sim uses that hasn't been measured on the current car. Values in
-`accel/params.py` (`Car`), `accel/powertrain.py` (`Pack`, motor) and `accel/firmware.py`
-(sensors) are marked ESTIMATE / PLACEHOLDER / VERIFY in the code; `accel.report`'s
+`kmslap/car/params.py` (`Car`), `kmslap/car/powertrain.py` (`Pack`, motor) and `kmslap/vcu/firmware.py`
+(sensors) are marked ESTIMATE / PLACEHOLDER / VERIFY in the code; `kmslap report`'s
 "what to measure next" ranks how much each matters for accel time.
 
 - **Aero, wing closed and open:** ClA and aero balance (only drag is ours, from
@@ -384,15 +399,14 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 
 | Path | What |
 |---|---|
-| `accel/` | accel event sim, controller bridge, Monte Carlo, system ID, visualization |
+| `kmslap/` | the package (see the table at the top) |
 | `controller/` | VCU launch/traction controller (C++), Makefile for sim and Teensy builds |
 | `build/` | generated, gitignored: the compiled CasADi model |
 | `tests/` | pytest suite |
 | `accel_sim.ipynb` | main accel notebook |
-| `motor.py`, `battery.py`, `tire/` | motor dq model, pack model, Pacejka tire fits (used by `accel/`) |
 | `tracks/` | track lines (GeoJSON): FSAE Michigan 2026 EV endurance |
 | `datasheets/` | COSMX cell (image + `cosmx_95b0d0hd.toml`, read by `Pack`), EMRAX 228 PDF, its efficiency map digitized to CSV (`extract_emrax_efficiency.py`, with a check overlay) |
 | `cardata/`, `olapsims/`, `dynoruns/` | logged car data, OptimumLap export, dyno pulls |
-| other `*.ipynb`, `*.py` | older log analysis, motor curve, battery and wiring scripts; many read logs from paths that aren't in the repo |
+| `legacy/` | older log analysis, motor curve, battery and wiring notebooks and scripts (many read logs from paths that aren't in the repo); to review for what's worth bringing back |
 | `pyproject.toml`, `uv.lock` | Python dependencies and their lock (uv) |
 | `flake.nix`, `flake.lock` | Nix dev shell: builds the env from `uv.lock` via uv2nix, plus compilers and the Rerun viewer |

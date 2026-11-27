@@ -3,8 +3,8 @@
 
 import pandas as pd
 
-from . import Car, CurveTire, MotorMap, SlipTC, quasi_static, simulate
-from .tire import default_tire
+from kmslap import Car, CurveTire, MotorMap, SlipTC, quasi_static, simulate
+from kmslap.car.tire import default_tire
 
 
 def run(fds=(Car.final_drive,), motor: str = "228HV", pack: str = "cosmx600v", tire: str = "lc0",

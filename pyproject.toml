@@ -1,7 +1,7 @@
 [project]
 name = "python-data-analysis"
 version = "0.1.0"
-description = "FSAE EV performance analysis: accel event sim, VCU launch/traction controller, log tooling"
+description = "kmslap: Kennesaw Motorsports lap sim: FSAE EV car model, events, VCU controller in the loop, strategy tuning"
 requires-python = ">=3.11"
 dependencies = [
     # sim
@@ -34,21 +34,21 @@ dependencies = [
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
-accel = "accel.cli:main"
+kmslap = "kmslap.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 # Installed editable (uv sync; the Nix shell via uv2nix's editable overlay) so the
-# `accel` command exists for tab completion. Code is always run from the repo: the
-# editable install puts the repo root on sys.path (dev-mode-dirs), where accel/ and
-# the older root modules it uses (motor.py, battery.py, tire/) and its data live.
+# `kmslap` command exists for tab completion. Code is always run from the repo: the
+# editable install puts the repo root on sys.path (dev-mode-dirs), where kmslap/ and
+# its data (datasheets/, tracks/, controller/, ...) live.
 [tool.hatch.build]
 dev-mode-dirs = ["."]
 
 [tool.hatch.build.targets.wheel]
-packages = ["accel"]
+packages = ["kmslap"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

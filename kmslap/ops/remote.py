@@ -24,9 +24,9 @@ import os
 import shlex
 import subprocess
 import sys
-from pathlib import Path
+from kmslap import dirs
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = dirs.REPO
 DEFAULT_HOST = os.environ.get("ACCEL_REMOTE_HOST", "mathewos@desktop-17id03o-2")
 DEFAULT_DIR = os.environ.get("ACCEL_REMOTE_DIR", "python-data-analysis")   # relative to remote $HOME
 REPO_URL = "https://github.com/mathbrook/python-data-analysis.git"
@@ -96,8 +96,8 @@ def setup(host: str, dir_: str):
              "{ echo 'missing: nix (or uv)'; exit 1; }; "
              f"[ -d {shlex.quote(dir_)}/.git ] || git clone -q {REPO_URL} {shlex.quote(dir_)}; "
              f"cd {shlex.quote(dir_)} && "
-             "if command -v nix >/dev/null; then nix develop -c python -c 'import accel; print(\"env ok\")'; "
-             "else uv sync -q && uv run python -c 'import accel; print(\"env ok\")'; fi; "
+             "if command -v nix >/dev/null; then nix develop -c python -c 'import kmslap; print(\"env ok\")'; "
+             "else uv sync -q && uv run python -c 'import kmslap; print(\"env ok\")'; fi; "
              "echo cores: $(nproc)")
     sys.exit(subprocess.run(ssh_command(host, check)).returncode)
 

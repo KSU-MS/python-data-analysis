@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write  # the accel sim diff comment
+      pull-requests: write  # the sim diff comment
       issues: write         # PR comments go through the issues API
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
       # drag race GIF + plots as an artifact; tables and charts on the run's summary page
       - name: Sim report
         run: |
-          nix develop -c accel report --out report
+          nix develop -c kmslap report --out report
           cat report/summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload sim report
@@ -46,10 +46,11 @@ jobs:
           git fetch --depth 1 origin "$BASE_SHA"
           git worktree add "$RUNNER_TEMP/base" "$BASE_SHA"
           # base code in the PR's environment (PYTHONPATH points imports at it; the
-          # `accel` command would run this checkout's). A base from before the CLI
-          # has `python -m accel.report`; a base without metrics.json is handled.
-          nix develop -c sh -c 'cd "$RUNNER_TEMP/base" && export PYTHONPATH=$PWD && { python -m accel report --out "$RUNNER_TEMP/base-report" || python -m accel.report --out "$RUNNER_TEMP/base-report"; }' || true
-          nix develop -c accel report-diff "$RUNNER_TEMP/base-report/metrics.json" \
+          # `kmslap` command would run this checkout's). A base from before the CLI
+          # was `accel` (`python -m accel report`, or before the CLI `python -m
+          # accel.report`); a base without metrics.json is handled.
+          nix develop -c sh -c 'cd "$RUNNER_TEMP/base" && export PYTHONPATH=$PWD && out="$RUNNER_TEMP/base-report" && { python -m kmslap report --out "$out" || python -m accel report --out "$out" || python -m accel.report --out "$out"; }' || true
+          nix develop -c kmslap report-diff "$RUNNER_TEMP/base-report/metrics.json" \
             report/metrics.json --artifact-url "$RUN_URL" > "$RUNNER_TEMP/diff.md"
           cat "$RUNNER_TEMP/diff.md" >> "$GITHUB_STEP_SUMMARY"
 

@@ -25,8 +25,9 @@ from pathlib import Path
 import casadi as ca
 import numpy as np
 
-from .params import G, Car
-from .powertrain import MotorMap, Pack
+from kmslap.car.params import G, Car
+from kmslap.car.powertrain import MotorMap, Pack
+from kmslap import dirs
 
 STATES = ["x", "v", "omega", "kappa", "a_filt", "t_lagged", "bus_v"]
 OUTPUTS = ["accel", "fx", "fz_rear", "fz_front", "motor_torque", "bus_i", "drag", "motor_rpm"]
@@ -37,7 +38,7 @@ PARAMS = ["mass", "cg_height", "wheelbase", "front_weight", "tire_radius", "fina
           "pack_max_current", "dt"]
 RPM_PER_RADS = 60 / (2 * np.pi)
 
-BUILD_DIR = Path(__file__).resolve().parent.parent / "build" / "casadi"
+BUILD_DIR = dirs.BUILD / "casadi"
 
 
 def params(car: Car, motor: MotorMap, pack: Pack, tire, relaxation_length: float,
@@ -68,7 +69,7 @@ def _motor_max_torque(motor: MotorMap):
 
 
 def _pack_solve(p, power):
-    """accel.powertrain.Pack.solve: P = V I with V = Voc - I R, current limited."""
+    """kmslap.car.powertrain.Pack.solve: P = V I with V = Voc - I R, current limited."""
     v_oc, r, i_max = p["pack_v_oc"], p["pack_resistance"], p["pack_max_current"]
     disc = v_oc * v_oc - 4 * r * power
     current = ca.if_else(disc >= 0, (v_oc - ca.sqrt(ca.fmax(disc, 0))) / (2 * r), v_oc / (2 * r))
@@ -79,7 +80,7 @@ def _pack_solve(p, power):
 
 
 def _powertrain(p, max_torque, t_cmd, omega_m, bus_v):
-    """accel.sim._powertrain_torque: motor map, 80 kW rule, pack limits."""
+    """kmslap.events.accel._powertrain_torque: motor map, 80 kW rule, pack limits."""
     spinning = omega_m > 1e-6
     w = ca.fmax(omega_m, 1e-6)
     torque = ca.fmin(t_cmd, max_torque(omega_m * RPM_PER_RADS, bus_v))
@@ -220,7 +221,7 @@ def accel_step(motor: MotorMap, tire, param_vector, state0) -> CompiledStep:
     """step_function, compiled, for simulate()'s loop."""
     return CompiledStep("accel_step", lambda: step_function(motor, tire),
                         _motor_key(motor) + (tire.table_key(),),
-                        [Path(__file__), Path(__file__).with_name("tire.py")],
+                        [Path(__file__), dirs.PACKAGE / "car" / "tire.py"],
                         1, len(OUTPUTS), param_vector, state0)
 
 
@@ -278,7 +279,7 @@ def accel_time_sensitivity(car: Car, motor: MotorMap, pack: Pack, tire, *,
 
     Returns (accel_time, {param: d accel_time / d param}).
     """
-    from .sim import LENGTH, STAGE
+    from kmslap.events.accel import LENGTH, STAGE
 
     n = int(t_max / dt)
     p0 = params(car, motor, pack, tire, relaxation_length, dt)

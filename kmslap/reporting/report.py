@@ -34,14 +34,14 @@ import numpy as np  # noqa: E402
 from matplotlib.animation import FuncAnimation, PillowWriter  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 
-from . import model  # noqa: E402
-from .firmware import FAULTS, FirmwareController, Sensors, read_log, replay, write_log  # noqa: E402
-from .params import G, Car  # noqa: E402
-from .powertrain import PACKS, MotorMap, Pack  # noqa: E402
-from .sim import LENGTH, STAGE, quasi_static, simulate  # noqa: E402
-from .sysid import fit_plant  # noqa: E402
-from .tire import default_tire  # noqa: E402
-from .uncertainty import ABSOLUTE, RANGES, monte_carlo, sample_plants  # noqa: E402
+from kmslap.models import accel1d as model  # noqa: E402
+from kmslap.vcu.firmware import FAULTS, FirmwareController, Sensors, read_log, replay, write_log  # noqa: E402
+from kmslap.car.params import G, Car  # noqa: E402
+from kmslap.car.powertrain import PACKS, MotorMap, Pack  # noqa: E402
+from kmslap.events.accel import LENGTH, STAGE, quasi_static, simulate  # noqa: E402
+from kmslap.vcu.sysid import fit_plant  # noqa: E402
+from kmslap.car.tire import default_tire  # noqa: E402
+from kmslap.vcu.uncertainty import ABSOLUTE, RANGES, monte_carlo, sample_plants  # noqa: E402
 
 COLORS = ["#e6504a", "#468ce6", "#5abe6e", "#e6aa32"]
 plt.rcParams.update({"figure.dpi": 100, "axes.grid": True, "grid.alpha": 0.3})

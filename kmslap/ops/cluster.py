@@ -1,14 +1,14 @@
 """Spread independent sim jobs over this machine and remote ones, with a live view.
 
-    from accel.cluster import Cluster
+    from kmslap.ops.cluster import Cluster
     with Cluster(remotes=["mathewos@desktop-17id03o-2"]) as c:
-        results = c.map("accel.strategy:evaluate", candidates, labels=[...])
+        results = c.map("kmslap.strategy:evaluate", candidates, labels=[...])
     c.save_timeline("timeline.png")
 
 How: a coordinator here serves a task queue (multiprocessing.managers, stdlib) on
 127.0.0.1. Each machine runs a node (`accel cluster node`) with one worker
 per core; workers pull tasks as they free up, so faster machines take more. Remote
-nodes get this working tree pushed and started through accel.remote, and reach the
+nodes get this working tree pushed and started through kmslap.ops.remote, and reach the
 queue through an SSH reverse tunnel (no ports opened anywhere). Tasks are
 "module:function" names plus a picklable argument, so both sides run the same code.
 
@@ -29,11 +29,11 @@ import threading
 import time
 import traceback
 from multiprocessing.managers import BaseManager, DictProxy
-from pathlib import Path
 
-from . import remote
+from kmslap.ops import remote
+from kmslap import dirs
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = dirs.REPO
 
 
 class _Manager(BaseManager):
@@ -148,7 +148,7 @@ class Cluster:
             name = socket.gethostname()
             self.hosts[name] = self.local_workers
             self._procs.append(subprocess.Popen(
-                [sys.executable, "-m", "accel", "cluster", "node", *args, "--name", name,
+                [sys.executable, "-m", "kmslap", "cluster", "node", *args, "--name", name,
                  "--workers", str(self.local_workers)], cwd=ROOT))
         if self.remotes:
             sha = remote.snapshot()
@@ -159,7 +159,7 @@ class Cluster:
                 name = host.split("@")[-1]
                 self.hosts[name] = cores
                 script = remote.job_script(self.remote_dir, sha, [
-                    "python", "-m", "accel", "cluster", "node", *args, "--name", name,
+                    "python", "-m", "kmslap", "cluster", "node", *args, "--name", name,
                     "--workers", str(cores)], use_uv=False)
                 cmd = ["ssh", *remote.SSH_OPTS, "-o", "ExitOnForwardFailure=yes",
                        "-R", f"{self.port}:127.0.0.1:{self.port}", remote.resolve(host), script]
@@ -342,5 +342,5 @@ def selftest(n: int = 60, remotes: list[str] = (), workers: int | None = None):
     import random
     tasks = [random.uniform(0.5, 3.0) for _ in range(n)]
     with Cluster(local_workers=workers, remotes=list(remotes)) as c:
-        c.map("accel.cluster:sleep_task", tasks, labels=[f"sleep {x:.1f} s" for x in tasks],
+        c.map("kmslap.ops.cluster:sleep_task", tasks, labels=[f"sleep {x:.1f} s" for x in tasks],
               title="cluster self-test")

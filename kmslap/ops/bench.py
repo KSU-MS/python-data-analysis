@@ -7,9 +7,9 @@ cluster across machines.
 
 single:   1D accel run, VCU controller in the loop, one double-track lap of the
           endurance line, a small grip envelope solve (best of a few repeats).
-parallel: a fixed set of accel.strategy candidates (2-lap endurance evaluations,
+parallel: a fixed set of kmslap.strategy candidates (2-lap endurance evaluations,
           ~4 s each), all cores, through a process pool: evaluations per second.
-cluster:  the same candidates through accel.cluster across this machine and the
+cluster:  the same candidates through kmslap.ops.cluster across this machine and the
           remotes (live dashboard in a terminal); also saves a timeline plot.
 Each writes a JSON (machine, cores, timings) into --out.
 """
@@ -47,13 +47,13 @@ def _machine():
 
 
 def single() -> dict:
-    from .drive import drive
-    from .driver import PathFollower
-    from .envelope import gg_envelope
-    from .firmware import FirmwareController
-    from .params import Car
-    from .sim import simulate
-    from .track import michigan_2026_endurance
+    from kmslap.driving.drive import drive
+    from kmslap.driving.follower import PathFollower
+    from kmslap.models.envelope import gg_envelope
+    from kmslap.vcu.firmware import FirmwareController
+    from kmslap.car.params import Car
+    from kmslap.events.accel import simulate
+    from kmslap.events.track import michigan_2026_endurance
 
     car = Car().open_aero()
     simulate(car)                                   # warm caches / compiled models
@@ -81,13 +81,13 @@ def candidates(n: int) -> list[dict]:
 
 
 def _warm():
-    from .strategy import _speed
+    from kmslap.strategy import _speed
     for m in (0.8, 0.85, 0.9, 0.95, 1.0):
         _speed(m)
 
 
 def parallel(n: int, workers: int | None = None) -> dict:
-    from .strategy import evaluate
+    from kmslap.strategy import evaluate
 
     _warm()
     cands = candidates(n)
@@ -100,7 +100,7 @@ def parallel(n: int, workers: int | None = None) -> dict:
 
 
 def cluster(n: int, remotes: list[str], local_workers: int | None, timeline: Path | None) -> dict:
-    from .cluster import Cluster
+    from kmslap.ops.cluster import Cluster
 
     _warm()
     cands = candidates(n)
@@ -108,7 +108,7 @@ def cluster(n: int, remotes: list[str], local_workers: int | None, timeline: Pat
               f"{' DRS' if c['drs'] else ''}{' regen' if c['regen'] else ''}" for c in cands]
     with Cluster(local_workers=local_workers, remotes=remotes) as c:
         t0 = time.perf_counter()
-        c.map("accel.strategy:evaluate", cands, labels=labels, title=f"bench: {n} strategy evaluations")
+        c.map("kmslap.strategy:evaluate", cands, labels=labels, title=f"bench: {n} strategy evaluations")
         el = time.perf_counter() - t0
     if timeline:
         c.save_timeline(timeline)

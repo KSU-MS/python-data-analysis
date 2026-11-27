@@ -7,12 +7,12 @@ import math
 import tomllib
 import warnings
 from functools import lru_cache
-from pathlib import Path
 
 import numpy as np
 
-import battery
-from motor import EMRAX_MOTORS, Motor
+from kmslap.car import battery
+from kmslap.car.motor import EMRAX_MOTORS, Motor
+from kmslap import dirs
 
 MOTORS = {m.name: m for m in EMRAX_MOTORS}
 
@@ -70,7 +70,7 @@ def _build_table(name, rpm_step, v_min, v_max, v_step):
     return tuple(tuple(float(x) for x in row) for row in np.nan_to_num(tbl))
 
 
-DATASHEETS = Path(__file__).resolve().parent.parent / "datasheets"
+DATASHEETS = dirs.DATASHEETS
 # motor efficiency maps (shaft vs electrical), digitized from the datasheets by
 # datasheets/extract_emrax_efficiency.py. EMRAX says its MV / LV 228s have the HV's maps.
 EFFICIENCY_MAPS = {"228HV": "emrax_228hv_efficiency.csv", "228MV": "emrax_228hv_efficiency.csv"}

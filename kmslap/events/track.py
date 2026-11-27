@@ -10,9 +10,10 @@ from pathlib import Path as FilePath
 import numpy as np
 from scipy.interpolate import splev, splprep
 
-from .driver import Path
+from kmslap.driving.paths import Path
+from kmslap import dirs
 
-TRACKS = FilePath(__file__).resolve().parent.parent / "tracks"
+TRACKS = dirs.TRACKS
 EARTH_RADIUS = 6371008.8   # m
 
 

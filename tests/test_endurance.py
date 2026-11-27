@@ -4,12 +4,13 @@ import math
 import numpy as np
 import pytest
 
-from accel import Car
-from accel.drive import drive
-from accel.driver import DrsPolicy, ScriptedDriver
-from accel.endurance import endurance
-from accel.powertrain import PACKS, Pack
-from accel.track import michigan_2026_endurance
+from kmslap import Car
+from kmslap.driving.drive import drive
+from kmslap.driving.policies import DrsPolicy
+from kmslap.driving.follower import ScriptedDriver
+from kmslap.events.endurance import endurance
+from kmslap.car.powertrain import PACKS, Pack
+from kmslap.events.track import michigan_2026_endurance
 
 
 @pytest.fixture(scope="module")

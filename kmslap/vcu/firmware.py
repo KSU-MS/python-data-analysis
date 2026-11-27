@@ -22,10 +22,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .params import Car
-from .powertrain import MotorMap
+from kmslap.car.params import Car
+from kmslap.car.powertrain import MotorMap
+from kmslap import dirs
 
-CONTROLLER_DIR = Path(__file__).resolve().parent.parent / "controller"
+CONTROLLER_DIR = dirs.CONTROLLER
 LIB_PATH = CONTROLLER_DIR / "build" / "libvcu_control.so"
 
 MODES = {"passthrough": 0, "slip_pi": 1, "mu_adaptive": 2}
@@ -373,7 +374,7 @@ def warmup(car: Car, controller: FirmwareController, motor="228HV", tire=None,
     """Drive gently then coast, like getting to the start line, so the controller can
     calibrate tire radii and VectorNav bias. Returns the learned values; pass them as
     FirmwareController(learned=...) for the run."""
-    from .sim import simulate
+    from kmslap.events.accel import simulate
 
     fc = replace(controller, mode="passthrough")
     simulate(car, motor, tire=tire, controller=fc, t_max=drive_time + coast_time,

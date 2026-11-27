@@ -41,9 +41,10 @@ from pathlib import Path
 import casadi as ca
 import numpy as np
 
-from . import model
-from .params import G, Car
-from .powertrain import MotorMap, Pack, motor_efficiency_map
+from kmslap.models import accel1d as model
+from kmslap.car.params import G, Car
+from kmslap.car.powertrain import MotorMap, Pack, motor_efficiency_map
+from kmslap import dirs
 
 WHEELS = ("fl", "fr", "rl", "rr")
 STATES = (["X", "Y", "psi", "vx", "vy", "r"] + [f"omega_{w}" for w in WHEELS]
@@ -264,6 +265,6 @@ def car_step(motor: MotorMap, tire, pack: Pack, param_vector, state0) -> model.C
                                      model._hash_arrays(*motor_efficiency_map(motor.name)))
     here = Path(__file__)
     return model.CompiledStep("car_step", lambda: step_function(motor, tire, pack), key,
-                              [here, here.with_name("model.py"), here.with_name("tire.py"),
-                               here.with_name("powertrain.py")],
+                              [here, here.with_name("accel1d.py"), dirs.PACKAGE / "car" / "tire.py",
+                               dirs.PACKAGE / "car" / "powertrain.py"],
                               len(INPUTS), len(OUTPUTS), param_vector, state0)

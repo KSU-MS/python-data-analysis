@@ -1,5 +1,9 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+
+_CURVES = Path(__file__).resolve().parent / "battery_soc_curves"
 
 class battery:
     def __init__(self,capacity_voltage_curve_path:str,capacity=2500,resistance=32.1/1000,c_rate = 14) -> None:
@@ -105,9 +109,9 @@ class batteryPack:
         theoretical_max = (self.getInstantaneousVoltage(0)**2)/(4*pack_resistance)
         return real_max
 class cell_models:
-    lgHE2= battery(r'battery_soc_curves/lgHE2ahCurve.csv')
+    lgHE2= battery(_CURVES / 'lgHE2ahCurve.csv')
     # THis curve is not real, I just adjusted the points of the HE2 curve
-    cosmx= battery(r'battery_soc_curves/COSMXahCurve.csv',capacity=13000,resistance=1.5/1000,c_rate=25)
+    cosmx= battery(_CURVES / 'COSMXahCurve.csv',capacity=13000,resistance=1.5/1000,c_rate=25)
 class batt_models:
     energus250v = batteryPack(cell_models.lgHE2,8,60,'ENERGUS60s8p')
     energus300v = batteryPack(cell_models.lgHE2,8,72,'ENERGUS72s8p')

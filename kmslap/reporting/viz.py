@@ -18,8 +18,8 @@ import numpy as np
 import rerun as rr
 import rerun.blueprint as rrb
 
-from .params import G, Car
-from .sim import LENGTH, STAGE
+from kmslap.car.params import G, Car
+from kmslap.events.accel import LENGTH, STAGE
 
 LANE_SPACING = 3.0     # m between lanes
 PITCH_PER_G = 0.04     # rad of body pitch per g, exaggerated so it's visible
@@ -171,9 +171,9 @@ def show_runs(runs: dict, car: Car = None, save: str | None = None, **kw):
 
 def standard_runs(car: Car = None) -> dict:
     """No TC vs the firmware controllers on the current car."""
-    from .firmware import FirmwareController
-    from .powertrain import MotorMap
-    from .sim import simulate
+    from kmslap.vcu.firmware import FirmwareController
+    from kmslap.car.powertrain import MotorMap
+    from kmslap.events.accel import simulate
 
     car = car or Car().open_aero()
     motor = MotorMap("228HV")

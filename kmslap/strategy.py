@@ -26,9 +26,9 @@ _profiles = {}
 
 
 def _speed(margin):
-    from .envelope import gg_envelope, speed_profile
-    from .params import Car
-    from .track import michigan_2026_endurance
+    from kmslap.models.envelope import gg_envelope, speed_profile
+    from kmslap.car.params import Car
+    from kmslap.events.track import michigan_2026_endurance
 
     if margin not in _profiles:
         path = michigan_2026_endurance()
@@ -39,7 +39,7 @@ def _speed(margin):
 def _soc_after(energy_j: float) -> float:
     """SOC left after drawing energy_j from the cells, from full, through the pack's
     open-circuit voltage curve."""
-    from .powertrain import PACKS, Pack
+    from kmslap.car.powertrain import PACKS, Pack
 
     pack = Pack(PACKS["cosmx600v"])
     soc = np.linspace(1.0, 0.0, 1001)
@@ -53,9 +53,9 @@ def _soc_after(energy_j: float) -> float:
 def evaluate(c: dict) -> dict:
     """c: margin, coast_time, drs (None or DrsPolicy kwargs), regen (None or
     RegenPolicy kwargs). Two laps, projected."""
-    from .driver import DrsPolicy, RegenPolicy
-    from .endurance import endurance
-    from .params import Car
+    from kmslap.driving.policies import DrsPolicy, RegenPolicy
+    from kmslap.events.endurance import endurance
+    from kmslap.car.params import Car
 
     path, speed = _speed(c["margin"])
     res = endurance(Car(), laps=2, path=path, speed=speed, coast_time=c["coast_time"],
@@ -84,14 +84,14 @@ def evaluate(c: dict) -> dict:
             "objective": time + PENALTY_S_PER_SOC * short}
 
 
-_cluster = None   # an accel.cluster.Cluster to run on instead of a local pool
+_cluster = None   # an kmslap.ops.cluster.Cluster to run on instead of a local pool
 
 
 def _map(fn, cands, workers):
     if _cluster is not None:
         labels = [f"pace {c['margin']:.2f} coast {c['coast_time']:.1f}"
                   f"{' DRS' if c['drs'] else ''}{' regen' if c.get('regen') else ''}" for c in cands]
-        return _cluster.map(f"accel.strategy:{fn.__name__}", cands, labels=labels,
+        return _cluster.map(f"kmslap.strategy:{fn.__name__}", cands, labels=labels,
                             title=f"strategy: {fn.__name__}")
     with ProcessPoolExecutor(workers) as ex:
         return list(ex.map(fn, cands))
@@ -102,9 +102,9 @@ def _run(cands, workers):
 
 
 def full_event(c: dict) -> dict:
-    from .driver import DrsPolicy, RegenPolicy
-    from .endurance import endurance
-    from .params import Car
+    from kmslap.driving.policies import DrsPolicy, RegenPolicy
+    from kmslap.events.endurance import endurance
+    from kmslap.car.params import Car
 
     path, speed = _speed(c["margin"])
     res = endurance(Car(), laps=EVENT_LAPS, path=path, speed=speed, coast_time=c["coast_time"],
@@ -176,15 +176,15 @@ def run(out: str = "strategy", workers: int | None = None, regen: bool = False,
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from .envelope import gg_envelope
-    from .params import Car
+    from kmslap.models.envelope import gg_envelope
+    from kmslap.car.params import Car
 
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     gg_envelope(Car())       # solve / cache once before the workers need it
     global _cluster
     if remote:
-        from .cluster import Cluster
+        from kmslap.ops.cluster import Cluster
         _cluster = Cluster(local_workers=workers, remotes=list(remote)).__enter__()
     try:
         results, confirmed = tune(workers, soc_floor, regen=regen)

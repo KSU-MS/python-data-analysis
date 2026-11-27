@@ -4,10 +4,10 @@ import dataclasses
 import numpy as np
 import pytest
 
-from accel import Car, CurveTire, MotorMap, simulate
-from accel import model
-from accel.powertrain import PACKS, Pack
-from accel.tire import PacejkaTire, default_tire
+from kmslap import Car, CurveTire, MotorMap, simulate
+from kmslap.models import accel1d as model
+from kmslap.car.powertrain import PACKS, Pack
+from kmslap.car.tire import PacejkaTire, default_tire
 
 
 @pytest.fixture(scope="module")

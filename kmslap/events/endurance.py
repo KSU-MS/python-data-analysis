@@ -15,12 +15,13 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .drive import drive
-from .driver import DrsPolicy, PathFollower
-from .envelope import gg_envelope, speed_profile
-from .params import Car
-from .powertrain import PACKS, Pack
-from .track import michigan_2026_endurance
+from kmslap.driving.drive import drive
+from kmslap.driving.policies import DrsPolicy
+from kmslap.driving.follower import PathFollower
+from kmslap.models.envelope import gg_envelope, speed_profile
+from kmslap.car.params import Car
+from kmslap.car.powertrain import PACKS, Pack
+from kmslap.events.track import michigan_2026_endurance
 
 DRIVER_CHANGE_S = 180.0
 

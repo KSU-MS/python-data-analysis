@@ -2,11 +2,12 @@
 import pytest
 from typer.testing import CliRunner
 
-from accel import cli, remote
-from accel.powertrain import MOTORS, PACKS
+from kmslap import cli
+from kmslap.ops import remote
+from kmslap.car.powertrain import MOTORS, PACKS
 
 runner = CliRunner()
-COMMANDS = [[], ["sim"], ["report"], ["report-diff"], ["viz"], ["drive"], ["endurance"], ["strategy"],
+COMMANDS = [[], ["accel"], ["report"], ["report-diff"], ["viz"], ["drive"], ["endurance"], ["strategy"],
             ["bench"], ["remote"], ["remote", "run"], ["remote", "setup"], ["remote", "fetch"],
             ["remote", "log"], ["cluster"], ["cluster", "selftest"]]
 
@@ -24,8 +25,8 @@ def test_choices_match_the_model():
     assert {p.value for p in cli.PackName} == set(PACKS)
 
 
-def test_sim_runs():
-    r = runner.invoke(cli.app, ["sim", "3.0"])
+def test_accel_runs():
+    r = runner.invoke(cli.app, ["accel", "3.0"])
     assert r.exit_code == 0, r.output
     assert "ideal TC" in r.output
 

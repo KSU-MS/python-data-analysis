@@ -24,11 +24,11 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from . import model
-from .control import SlipTC
-from .params import G, Car
-from .powertrain import MotorMap, Pack
-from .tire import default_tire
+from kmslap.models import accel1d as model
+from kmslap.vcu.control import SlipTC
+from kmslap.car.params import G, Car
+from kmslap.car.powertrain import MotorMap, Pack
+from kmslap.car.tire import default_tire
 
 RPM_PER_RADS = 60 / (2 * math.pi)
 STAGE = 0.3      # m, car is staged this far behind the start line
@@ -95,8 +95,8 @@ def simulate(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | str 
     ramp_time: driver torque request ramps 0 -> peak over this long (KS5e drivers
         reached full pedal in 0.06-0.1 s).
     torque_request: optional f(t, v) -> Nm replacing the ramp, e.g. a launch map
-        from accel.launch. Still capped by the motor, pack, and TC.
-    controller: e.g. accel.firmware.FirmwareController; replaces `tc`. Runs the VCU
+        from kmslap.events.launch. Still capped by the motor, pack, and TC.
+    controller: e.g. kmslap.vcu.firmware.FirmwareController; replaces `tc`. Runs the VCU
         code on modeled sensors, its log ends up in Result.controller_log.
     slip_speed_floor: below this speed (m/s) the measured slip fed to TC uses this
         as the denominator, like a real TC does to avoid dividing by ~0.
@@ -225,5 +225,5 @@ def _ramp(peak, ramp_time):
 
 
 def _pack_by_name(name):
-    from .powertrain import PACKS
+    from kmslap.car.powertrain import PACKS
     return PACKS[name]

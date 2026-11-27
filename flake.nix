@@ -1,5 +1,5 @@
 {
-  description = "FSAE performance analysis / accel sim";
+  description = "kmslap: Kennesaw Motorsports lap sim (FSAE EV)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -47,7 +47,7 @@
               autoPatchelfIgnoreMissingDeps = true;
             });
           };
-          # this project, installed editable (so `accel` is a command, with completion)
+          # this project, installed editable (so `kmslap` is a command, with completion)
           # pointing at the checkout: code edits apply without rebuilding the env
           editable = workspace.mkEditablePyprojectOverlay { root = "$REPO_ROOT"; };
           editableBuild = final: prev: {
@@ -57,7 +57,7 @@
                 root = old.src;
                 fileset = lib.fileset.unions [
                   (old.src + "/pyproject.toml")
-                  (old.src + "/accel/__init__.py")
+                  (old.src + "/kmslap/__init__.py")
                 ];
               };
               nativeBuildInputs = old.nativeBuildInputs ++ final.resolveBuildSystem { editables = [ ]; };
@@ -72,7 +72,7 @@
     in {
       devShells = forAll (pkgs: {
         default = let venv = pythonEnv pkgs; in pkgs.mkShell {
-          # rerun: the viewer for accel/viz.py, first on PATH so it wins over the
+          # rerun: the viewer for kmslap/reporting/viz.py, first on PATH so it wins over the
           # wheel's bundled viewer (which needs GL/Wayland libs NixOS doesn't expose).
           # pyproject.toml pins rerun-sdk to this version.
           packages = [ pkgs.rerun venv pkgs.uv ];

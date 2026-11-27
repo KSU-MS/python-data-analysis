@@ -1,8 +1,9 @@
 """Drive the double-track car: a driver's pedal / brake / steering inputs, optionally
 through the VCU controller, into vehicle.py's model.
 
-    from accel.drive import drive
-    from accel.driver import PathFollower, skidpad
+    from kmslap.driving.drive import drive
+    from kmslap.driving.follower import PathFollower
+    from kmslap.driving.paths import skidpad
     res = drive(PathFollower(skidpad(), speed=11.0))
     res.df          # logged every log_period: positions, speeds, per-wheel slip and
                     # forces, motor, pack SOC / temperature, driver inputs
@@ -15,10 +16,10 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from . import vehicle
-from .params import Car
-from .powertrain import PACKS, MotorMap, Pack
-from .tire import default_tire
+from kmslap.models import twotrack as vehicle
+from kmslap.car.params import Car
+from kmslap.car.powertrain import PACKS, MotorMap, Pack
+from kmslap.car.tire import default_tire
 
 
 @dataclass
@@ -36,7 +37,7 @@ def drive(driver, car: Car = None, motor: MotorMap | str = "228HV",
     """Run until the driver is done or t_max.
 
     The driver's pedal maps linearly to a torque request (0..motor peak), as the VCU's
-    pedal map would; controller (e.g. accel.firmware.FirmwareController) then turns
+    pedal map would; controller (e.g. kmslap.vcu.firmware.FirmwareController) then turns
     that into the inverter command, from per-wheel sensor edges, motor rpm and
     body-frame velocity / acceleration. Without one, the request goes straight to
     the inverter. Brake pedal maps to car.max_brake_torque, split by brake_bias_front.
@@ -123,8 +124,9 @@ def demo(out: str = "drive.png"):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from .driver import Path, PathFollower, skidpad
-    from .envelope import gg_envelope, speed_profile
+    from kmslap.driving.paths import Path, skidpad
+    from kmslap.driving.follower import PathFollower
+    from kmslap.models.envelope import gg_envelope, speed_profile
 
     car = Car()
     pad = skidpad()

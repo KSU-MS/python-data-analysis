@@ -35,13 +35,14 @@ from pathlib import Path as FilePath
 import casadi as ca
 import numpy as np
 
-from .driver import Path
-from .params import G, Car
-from .powertrain import PACKS, MotorMap, Pack
-from .tire import default_tire
+from kmslap.driving.paths import Path
+from kmslap.car.params import G, Car
+from kmslap.car.powertrain import PACKS, MotorMap, Pack
+from kmslap.car.tire import default_tire
+from kmslap import dirs
 
 WHEELS = ("fl", "fr", "rl", "rr")
-CACHE_DIR = FilePath(__file__).resolve().parent.parent / "build" / "envelope"
+CACHE_DIR = dirs.BUILD / "envelope"
 VARIABLES = ["beta", "steer", "kappa_fl", "kappa_fr", "kappa_rl", "kappa_rr", "torque", "brake", "rho"]
 MAX_SLIP_ANGLE = 0.2     # rad, about the TTC data's range
 MAX_BETA = math.radians(8)
@@ -187,8 +188,8 @@ def gg_envelope(car: Car = None, motor: MotorMap | str = "228HV", pack: Pack | s
                            tire.table_key_2d(), tire.scale, list(speeds), n_angles, soc,
                            max_steering_wheel)).encode())
     h.update(np.array(motor.table).tobytes())
-    for src in ("envelope.py", "tire.py"):
-        h.update((FilePath(__file__).with_name(src)).read_bytes())
+    for src in (FilePath(__file__), dirs.PACKAGE / "car" / "tire.py"):
+        h.update(src.read_bytes())
     path = CACHE_DIR / f"{h.hexdigest()[:16]}.npz"
     if cache and path.exists():
         z = np.load(path)

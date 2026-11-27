@@ -3,7 +3,7 @@
     fx(kappa, fz) -> longitudinal force (N)
     peak(fz)      -> (slip ratio at peak Fx, peak mu)
 
-and for accel.model, the same curve in CasADi with grip as a parameter:
+and for kmslap.models.accel1d, the same curve in CasADi with grip as a parameter:
 
     scale                          the grip multiplier fx is built with
     symbolic_fx(kappa, fz, scale)  CasADi expression equal to fx at that scale
@@ -17,8 +17,9 @@ from pathlib import Path
 import casadi as ca
 import numpy as np
 import pandas as pd
+from kmslap import dirs
 
-_CURVE_CSV = Path(__file__).resolve().parent.parent / "tire" / "mu-vs-slip.csv"
+_CURVE_CSV = Path(__file__).resolve().parent / "pacejka" / "mu-vs-slip.csv"
 
 
 class CurveTire:
@@ -69,7 +70,7 @@ class CurveTire:
 
 
 class PacejkaTire:
-    """TTC Pacejka fit from tire/, tabulated over (slip, Fz) at zero slip angle.
+    """TTC Pacejka fit from car/pacejka/, tabulated over (slip, Fz) at zero slip angle.
 
     `scale` maps belt grip to road grip; the old notebook used 0.5-0.6.
     `combined_table()` / `symbolic_fxy()` add slip angle, for the double-track model.
@@ -78,8 +79,8 @@ class PacejkaTire:
     def __init__(self, coeffs=None, scale: float = 0.6, v: float = 15.0,
                  fz_grid=np.arange(100.0, 2001.0, 100.0),
                  k_grid=np.round(np.arange(-0.3, 1.0001, 0.01), 4)):
-        from tire import tire_utils
-        from tire.tire_model_pacejka_2010 import tire_model_from_arr
+        from kmslap.car.pacejka import tire_utils
+        from kmslap.car.pacejka.tire_model_pacejka_2010 import tire_model_from_arr
 
         self._coeffs = tuple(tire_utils.H_LC0_18X6_7 if coeffs is None else coeffs)
         self._v = v
@@ -177,7 +178,7 @@ class PacejkaTire:
 _INTERPOLANTS = {}
 
 
-_CACHE_DIR = Path(__file__).resolve().parent.parent / "build" / "tire"
+_CACHE_DIR = dirs.BUILD / "tire"
 
 
 def _interpolants(key, kind, grid, fx, fy):
@@ -203,7 +204,7 @@ def _interpolants(key, kind, grid, fx, fy):
 
 @lru_cache(maxsize=4)
 def _combined_table(coeffs: tuple, v: float):
-    from tire.tire_model_pacejka_2010 import tire_model_from_arr
+    from kmslap.car.pacejka.tire_model_pacejka_2010 import tire_model_from_arr
 
     model = tire_model_from_arr(list(coeffs))
     # fine where the curves bend (small slip), coarse where they've saturated

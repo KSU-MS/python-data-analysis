@@ -4,10 +4,11 @@ import math
 import numpy as np
 import pytest
 
-from accel import Car
-from accel.drive import drive
-from accel.driver import Path, PathFollower
-from accel.envelope import gg_envelope, speed_profile
+from kmslap import Car
+from kmslap.driving.drive import drive
+from kmslap.driving.paths import Path
+from kmslap.driving.follower import PathFollower
+from kmslap.models.envelope import gg_envelope, speed_profile
 
 
 @pytest.fixture(scope="module")

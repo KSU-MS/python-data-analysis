@@ -14,10 +14,10 @@ for more than the tires can take, so what matters is the torque cap, not the ram
 import numpy as np
 from scipy.optimize import minimize
 
-from .params import Car
-from .powertrain import MotorMap
-from .sim import grip_limited_accel, simulate
-from .tire import default_tire
+from kmslap.car.params import Car
+from kmslap.car.powertrain import MotorMap
+from kmslap.events.accel import grip_limited_accel, simulate
+from kmslap.car.tire import default_tire
 
 
 def linear_ramp(peak: float, ramp_time: float):

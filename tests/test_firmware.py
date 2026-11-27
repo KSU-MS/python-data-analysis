@@ -1,4 +1,4 @@
-"""The C++ VCU controller (controller/), run through accel.firmware."""
+"""The C++ VCU controller (controller/), run through kmslap.vcu.firmware."""
 import ctypes
 import dataclasses
 import math
@@ -7,11 +7,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from accel import Car, MotorMap, PacejkaTire, quasi_static, simulate
-from accel.firmware import (FAULTS, FirmwareController, Inputs, Outputs, Sensors, load_library,
+from kmslap import Car, MotorMap, PacejkaTire, quasi_static, simulate
+from kmslap.vcu.firmware import (FAULTS, FirmwareController, Inputs, Outputs, Sensors, load_library,
                             read_log, replay, warmup, write_log)
-from accel.sysid import fit_plant
-from accel.uncertainty import RANGES
+from kmslap.vcu.sysid import fit_plant
+from kmslap.vcu.uncertainty import RANGES
 
 
 @pytest.fixture(scope="module")

@@ -13,9 +13,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .params import Car
+from kmslap.car.params import Car
+from kmslap import dirs
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = dirs.REPO
 OPTIMUMLAP_CSV = ROOT / "olapsims" / "208mvTestStrip.csv"
 KS5E_DIR = ROOT / "cardata" / "ks5e"
 
