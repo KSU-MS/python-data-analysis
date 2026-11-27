@@ -1,5 +1,5 @@
 """The car's aero from on-track tests: drag from coast-downs, downforce and balance from
-the shock pots. Reported, not applied: Car()'s aero is unchanged by this.
+the shock pots. Car()'s closed-wing aero is set from these (car/params.py).
 
     kmslap aero --out aero/        # fits, plots, summary
 
@@ -225,7 +225,7 @@ def run(out: str = "aero") -> dict:
         a.legend(fontsize=8)
     for a in ax:
         a.grid(alpha=0.3)
-    fig.suptitle("KS7e aero tests, 6 July 2024 (reported; Car() unchanged)", fontsize=10)
+    fig.suptitle("KS7e aero tests, 6 July 2024", fontsize=10)
     fig.tight_layout()
     fig.savefig(out / "aero.png", dpi=110)
     plt.close(fig)

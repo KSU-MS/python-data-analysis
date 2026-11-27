@@ -23,14 +23,15 @@ class Car:
     motor_eff: float = 0.90         # motor * inverter, battery -> shaft
 
     # Aero, wing CLOSED (full downforce). The wing can be set open by hand
-    # (open_aero()) or switched while driving with DRS (drs_* below, vehicle.py).
-    # Drag: python-endurance-drag-energy-calculator calc_drag.ipynb, Cd 1.815 on
-    # 1.146 m^2. Downforce: PLACEHOLDER, not measured on our car: that drag times the
-    # L/D (2.4) of a published full-aero FSAE car (ClA 5.47 / CdA 2.28,
-    # pidduuu.github.io "Justification for Aerodynamics", 2023). TODO(car data)
-    cda: float = 1.815 * 1.146118   # drag coefficient * frontal area, m^2 (2.08)
-    cla: float = 5.0                # lift coefficient * area, m^2 (positive = downforce)
-    aero_front: float = 0.47        # fraction of downforce on the front axle, PLACEHOLDER
+    # (open_aero()) or switched while driving with DRS (drs_* below, vehicle model).
+    # Measured on the KS7e aero tests of 6 July 2024 (same package as the current
+    # car; `kmslap aero`, validation/aero.py): downforce from shock pots calibrated by
+    # load transfer, ClA 1.69 with 45% on the front; drag from coast-downs, CdA
+    # 1.2-1.45 (the absolute value is soft over the 7-13 m/s coasts; 1.30 is the
+    # middle). Speeds only reached 19 m/s.
+    cda: float = 1.30               # drag coefficient * frontal area, m^2
+    cla: float = 1.69               # lift coefficient * area, m^2 (positive = downforce)
+    aero_front: float = 0.45        # fraction of downforce on the front axle
     rho: float = 1.226              # air density, kg/m^3
     crr: float = 0.015              # rolling resistance coefficient, ESTIMATE
 
@@ -76,13 +77,13 @@ class Car:
     regen_fade_speed: float = 8 / 3.6    # m/s, full regen above, linear fade between
 
     # Aero with the wing OPEN (DRS, or set open by hand). None = same as closed.
-    # Drag: calc_drag.ipynb, Cd 0.682 on 0.961 m^2. Downforce: PLACEHOLDER from
-    # Monash's FSAE DRS study (front wing -37%, rear wing -67% downforce) applied to
-    # a typical split of the closed ClA (front wing 35%, rear wing 40%, undertray
-    # 25% unchanged): 5.0 * 0.60 = 3.0, balance moving forward. TODO(car data)
-    drs_cda_open: float | None = 0.68167 * 0.9606706   # 0.655
-    drs_cla_open: float | None = 3.0
-    drs_aero_front_open: float | None = 0.57
+    # ESTIMATE (no DRS run in the tests): the measured package (ClA ~1.74, CdA ~0.41
+    # over the bare car) split as typical, rear wing ~40% of its downforce and ~60% of
+    # its drag, and opening removes ~2/3 of the rear wing's both (Monash / Princeton
+    # FSAE DRS figures); the lost downforce comes off the rear axle. TODO(car data)
+    drs_cda_open: float | None = 1.14
+    drs_cla_open: float | None = 1.22
+    drs_aero_front_open: float | None = 0.62
 
     def open_aero(self) -> "Car":
         """The car with its wing set open by hand: the open aero as its only config

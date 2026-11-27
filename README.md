@@ -382,9 +382,8 @@ faster than the desktop's WSL (Ryzen 7 5800XT, 16 threads); in parallel they're 
   transfer (no spring rates needed): ClA 1.69 with aero (45% front), ~0 without, so the
   package is ~1.7 (58% front). Drag from coast-downs: the package adds CdA ~0.4; the
   absolute CdA (~1.2-1.45 with aero) depends on separating it from rolling / driveline drag
-  over 7-13 m/s, so it's soft. Speeds only reached 19 m/s; no DRS test. **Reported, not
-  applied**: `Car()` still has the placeholder aero below (ClA 5.0, CdA 2.08), which
-  these measurements say is ~3x too much downforce and too much drag.
+  over 7-13 m/s, so it's soft. Speeds only reached 19 m/s; no DRS test. `Car()` uses
+  these: ClA 1.69, 45% front, CdA 1.30 (they replaced placeholders of ClA 5.0, CdA 2.08).
 
 `legacy/README.md` reviews the old notebooks and scripts and indexes the team log
 archive for what to validate next.
@@ -396,9 +395,11 @@ TODO: everything the sim uses that hasn't been measured on the current car. Valu
 (sensors) are marked ESTIMATE / PLACEHOLDER / VERIFY in the code; `kmslap report`'s
 "what to measure next" ranks how much each matters for accel time.
 
-- **Aero, wing closed and open:** measured for the 2024 package (`kmslap aero`: ClA ~1.7,
-  45% front; CdA ~1.2-1.45), not yet applied to `Car()`; DRS-open values still unknown.
-  Until applied: the drag is from calc_drag.ipynb. The downforce is a placeholder copied from other teams: closed ClA
+- **Aero:** closed wing measured on the 2024 package (`kmslap aero`) and applied: ClA 1.69,
+  45% front, CdA 1.30 (soft: 1.2-1.45). Still wanted: the DRS-open values (estimated
+  1.22 / 62% front / 1.14 from a typical rear-wing share and published DRS losses; with
+  them DRS doesn't pay in the endurance tuning, so measuring them decides DRS), faster
+  coast-downs for the absolute CdA, and a check above 19 m/s. The downforce is a placeholder copied from other teams: closed ClA
   5.0 is our CdA times the L/D (2.4) of a published full-aero FSAE car
   ([ClA 5.47 / CdA 2.28](https://pidduuu.github.io/jekyll/update/2023/10/01/Justification-for-Aerodynamics.html));
   open ClA 3.0 applies [Monash's FSAE DRS](https://people.eng.unimelb.edu.au/imarusic/proceedings/19/387.pdf)
